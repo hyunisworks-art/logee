@@ -7,7 +7,10 @@ const APP_DIR = path.resolve(__dirname, "..");
 
 /** サンプル設定ファイル（samples/）の絶対パス */
 function sampleFile(name) {
-  return path.join(APP_DIR, "samples", name);
+  const dir = name.includes(".logee-theme.") ? "themes"
+            : name.includes(".logee-mod.")   ? "mods"
+            : "configs";
+  return path.join(APP_DIR, "samples", dir, name);
 }
 
 /**

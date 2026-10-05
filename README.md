@@ -78,7 +78,7 @@ Vercel 等にデプロイする場合は、ルートの `index.html` と `logo.p
 | `danger` | 削除等 |
 | `border` | 一般ボーダー |
 
-**含まれないもの:** エクスポート対象外の `--shadow`（固定 CSS）や `--indent`（設定画面の数値）があります。既定の配色はダークで、`:root` に定義しています。ライトは `samples/sample-light.logee-theme.json` を読み込むと使えます。テーマ JSON で上書きした値が優先されます。
+**含まれないもの:** エクスポート対象外の `--shadow`（固定 CSS）や `--indent`（設定画面の数値）があります。既定の配色はダークで、`:root` に定義しています。ライトは `samples/themes/sample-light.logee-theme.json` を読み込むと使えます。テーマ JSON で上書きした値が優先されます。
 
 ### 作り方
 
@@ -86,7 +86,7 @@ Vercel 等にデプロイする場合は、ルートの `index.html` と `logo.p
 2. 設定 →「テーマをエクスポート」で `.logee-theme.json` を保存
 3. `name` / 色値をエディタで編集 → 再インポート
 
-サンプル: `samples/sample-dark.logee-theme.json`（既定と同じ）、`sample-light`、`sample-aqua` など。
+サンプル: `samples/themes/` に `sample-dark`（既定と同じ）、`sample-light`、`sample-aqua` などがあります。
 
 ## 統合設定（`.logee-config.json`）
 
@@ -109,7 +109,7 @@ Vercel 等にデプロイする場合は、ルートの `index.html` と `logo.p
 - **`keybinds`:** 下表のアクション名 → ショートカット文字列。未指定キーは組み込みデフォルトのまま。`Ctrl` は Windows/Linux の Ctrl と macOS の ⌘（Cmd）の両方にマッチします。
 - **`template.layout`:** `tree` | `tree-rtl` | `pyramid` | `radial`（不正値は `tree` にフォールバック）
 - **`template.connector`:** 現状 `straight` のみ実質利用（値の保持・往復）
-- **`template.params`:** レイアウト固有。`radial` では例: `radiusStep`, `startAngle`, `sweep`, `gap`（`samples/sample-radial.logee-config.json` 参照）
+- **`template.params`:** レイアウト固有。`radial` では例: `radiusStep`, `startAngle`, `sweep`, `gap`（`samples/configs/sample-radial.logee-config.json` 参照）
 
 ### デフォルトショートカット（上書き可能なアクション名）
 
@@ -138,7 +138,7 @@ Vercel 等にデプロイする場合は、ルートの `index.html` と `logo.p
 1. **Fork / Clone** して `index.html` を編集（単一ファイル完結）
 2. **テーマだけ**配布する: `.logee-theme.json` を作成し、設定からインポート
 3. **レイアウト preset** を配布: `.logee-config.json` の `template` を共有
-4. **配置アルゴリズム** を試す: `.logee-mod.json`（例: `samples/sample-spiral.logee-mod.json`）
+4. **配置アルゴリズム** を試す: `.logee-mod.json`（例: `samples/mods/sample-spiral.logee-mod.json`）
 
 ツリーの中身は Markdown 入出力でやり取りできます。複数ツリーの一括エクスポートは未対応です。
 
