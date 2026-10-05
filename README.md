@@ -158,6 +158,8 @@ cd tests && npm install && npx playwright test
 
 Logee は無料で全機能を使えます。バージョンアップの連絡と機能の要望は、[note の記事](https://note.com/hyu_nisworks/n/nfc96807ed86e)（100 円）の購入者向けに提供しています。このリポジトリでは Issue を受け付けていません。
 
+Logee はオープンソース（MIT License）として公開しており、Fork して自由に改変・再配布できます。開発と更新は作者が行う方針のため、Pull Request も原則として受け付けません。
+
 ## ライセンス
 
 [MIT License](./LICENSE) — Copyright (c) hyunisworks-art / ひゅー
