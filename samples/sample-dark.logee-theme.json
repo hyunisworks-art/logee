@@ -1,0 +1,18 @@
+{
+  "type": "theme",
+  "name": "Dark",
+  "version": "1.0.0",
+  "colors": {
+    "bg": "#16181d",
+    "panel": "#21242c",
+    "text": "#e8eaf0",
+    "text-sub": "#8a90a3",
+    "line": "#6b7386",
+    "accent": "#5b8def",
+    "accent-soft": "#263049",
+    "selected-border": "#a78bfa",
+    "editing-border": "#fbbf24",
+    "danger": "#e0687a",
+    "border": "#343945"
+  }
+}

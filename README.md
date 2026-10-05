@@ -78,7 +78,7 @@ Vercel 等にデプロイする場合は、ルートの `index.html` と `logo.p
 | `danger` | 削除等 |
 | `border` | 一般ボーダー |
 
-**含まれないもの:** エクスポート対象外の `--shadow`（固定 CSS）や `--indent`（設定画面の数値）があります。OS のダークモード向け `@media (prefers-color-scheme: dark)` のデフォルトは `:root` にあり、テーマ JSON で上書きした値が優先されます。
+**含まれないもの:** エクスポート対象外の `--shadow`（固定 CSS）や `--indent`（設定画面の数値）があります。既定の配色はダークで、`:root` に定義しています。ライトは `samples/sample-light.logee-theme.json` を読み込むと使えます。テーマ JSON で上書きした値が優先されます。
 
 ### 作り方
 
@@ -86,7 +86,7 @@ Vercel 等にデプロイする場合は、ルートの `index.html` と `logo.p
 2. 設定 →「テーマをエクスポート」で `.logee-theme.json` を保存
 3. `name` / 色値をエディタで編集 → 再インポート
 
-サンプル: `samples/sample-aqua.logee-theme.json` など。
+サンプル: `samples/sample-dark.logee-theme.json`（既定と同じ）、`sample-light`、`sample-aqua` など。
 
 ## 統合設定（`.logee-config.json`）
 
