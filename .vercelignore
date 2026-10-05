@@ -1,0 +1,12 @@
+# 公開するのは index.html / logo.png だけ。
+# それ以外はVercelへアップロードしない（公開URLからアクセスできてしまうため）。
+# samples/ は物理ファイルで配布するので公開不要。
+tests
+docs
+assets
+samples
+.agents
+.codex
+README.md
+CLAUDE.md
+AGENTS.md

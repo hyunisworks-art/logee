@@ -1,0 +1,15 @@
+{
+  "type": "logee-mod",
+  "name": "Spiral Layout (渦巻き)",
+  "version": "1.0.0",
+  "author": "nisWorks",
+  "layout": {
+    "name": "spiral",
+    "params": {
+      "angleStep": 0.6,
+      "radiusStep": 42,
+      "startRadius": 120
+    },
+    "code": "// 走査順にアルキメデス螺旋へ並べる。\n// 引数 tree は { id, collapsed, children } のみ（本文は渡されない）。\n// sizes は { [id]: { w, h } }、params はこのファイルの layout.params。\nvar all = [];\n(function walk(n) {\n  all.push(n);\n  if (!n.collapsed) (n.children || []).forEach(walk);\n})(tree);\n\nvar aStep = Number(params.angleStep)  || 0.6;\nvar rStep = Number(params.radiusStep) || 42;\nvar r0    = Number(params.startRadius) || 120;\n\nvar positions = {};\nall.forEach(function (n, i) {\n  var a = i * aStep;\n  var r = i === 0 ? 0 : r0 + i * rStep;\n  positions[n.id] = { x: r * Math.cos(a), y: r * Math.sin(a) };\n});\nreturn { positions: positions };\n"
+  }
+}

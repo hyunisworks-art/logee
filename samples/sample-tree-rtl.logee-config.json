@@ -1,0 +1,10 @@
+{
+  "type": "logee-config",
+  "name": "Layout: Tree RTL (右→左)",
+  "version": "1.0.0",
+  "template": {
+    "layout": "tree-rtl",
+    "connector": "straight",
+    "params": {}
+  }
+}

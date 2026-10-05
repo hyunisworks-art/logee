@@ -1,0 +1,2384 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logee - LogicTree</title>
+<link rel="icon" type="image/png" href="logo.png">
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.bubble.css" rel="stylesheet" integrity="sha384-hhU6vprS9l74/IJFLCcW++teAmTbQxhYoOShyYqZ/Ryc1bB109fyI+/0SOq4v8fy" crossorigin="anonymous">
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --text: #1f2430;
+    --text-sub: #7a8093;
+    --line: #7a8494;
+    --accent: #3b6fe0;
+    --accent-soft: #e8effd;
+    --selected-border: #7c3aed;
+    --editing-border: #d97706;
+    --danger: #d1495b;
+    --border: #dde1e8;
+    --shadow: 0 1px 3px rgba(20, 24, 35, 0.08);
+    --indent: 28px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d;
+      --panel: #21242c;
+      --text: #e8eaf0;
+      --text-sub: #8a90a3;
+      --line: #6b7386;
+      --accent: #5b8def;
+      --accent-soft: #263049;
+      --selected-border: #a78bfa;
+      --editing-border: #fbbf24;
+      --danger: #e0687a;
+      --border: #343945;
+      --shadow: 0 1px 3px rgba(0,0,0,0.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Segoe UI", sans-serif;
+  }
+  body { display: flex; flex-direction: column; }
+
+  header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0 8px 0 0; white-space: nowrap; }
+  .spacer { flex: 1; }
+  .save-status { font-size: 11.5px; color: var(--text-sub); white-space: nowrap; }
+
+  button {
+    font-family: inherit; font-size: 12.5px;
+    padding: 5px 11px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    cursor: pointer; white-space: nowrap;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { opacity: 0.9; color: #fff; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button:disabled:hover { border-color: var(--border); color: var(--text); }
+
+  /* header の下は「左カラム（ツリー一覧）＋キャンバス」の横並び。
+     min-height:0 がないと flex 子のキャンバスが縮まずスクロールしなくなる。 */
+  #main { flex: 1; display: flex; min-height: 0; }
+  #canvas { flex: 1; min-width: 0; overflow: auto; padding: 40px 60px; cursor: grab; }
+  #canvas.panning { cursor: grabbing; }
+
+  /* ---- 左カラム：ツリー一覧 ---- */
+  #treeList {
+    width: 210px; flex-shrink: 0; display: flex; flex-direction: column;
+    background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto;
+  }
+  #treeList.hidden { display: none; }
+  .tree-list-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+  }
+  .tree-list-label {
+    flex: 1; font-size: 11.5px; font-weight: 700; color: var(--text-sub);
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .tree-item {
+    display: flex; align-items: center; gap: 4px;
+    padding: 7px 10px; border-bottom: 1px solid var(--border); cursor: pointer;
+  }
+  .tree-item:hover { background: var(--accent-soft); }
+  .tree-item.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .tree-item-body { flex: 1; min-width: 0; }
+  .tree-item-title { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tree-item-meta { font-size: 10.5px; color: var(--text-sub); margin-top: 2px; }
+  .tree-item-del { opacity: 0; padding: 2px 5px; font-size: 11px; line-height: 1; flex-shrink: 0; }
+  .tree-item:hover .tree-item-del { opacity: 1; }
+  .tree-item-del:hover { border-color: var(--danger); color: var(--danger); }
+  .tree-item-input {
+    width: 100%; padding: 2px 4px; font-size: 12.5px; font-family: inherit;
+    border: 1px solid var(--accent); border-radius: 4px;
+    background: var(--bg); color: var(--text);
+  }
+
+  /* 接続線は物理方向（left）ではなく論理方向（inset-inline-start）で書く。
+     これにより #canvas に direction:rtl を当てるだけで tree レイアウト全体が左右反転する。 */
+  .subtree { position: relative; display: flex; flex-direction: row; align-items: center; }
+  .node-row { display: flex; align-items: center; position: relative; }
+  .hline {
+    position: absolute; inset-inline-start: calc(-1 * var(--indent) / 2);
+    width: calc(var(--indent) / 2); height: 2px; background: var(--line);
+  }
+  .trunk-line {
+    position: absolute; inset-inline-start: 100%;
+    width: calc(var(--indent) / 2); height: 2px; background: var(--line);
+  }
+  .children-col {
+    position: relative; display: flex; flex-direction: column;
+    margin-inline-start: var(--indent); gap: 14px; padding: 14px 0;
+  }
+  .vline { position: absolute; inset-inline-start: calc(-1 * var(--indent) / 2); width: 2px; background: var(--line); }
+  .child-wrapper { position: relative; }
+
+  /* ---- layout: tree-rtl（右→左に流れるツリー） ----
+     direction:rtl でツリー全体を反転させ、パネル内側だけ ltr に戻して本文の表示を保つ。 */
+  #canvas.layout-tree-rtl { direction: rtl; }
+  #canvas.layout-tree-rtl .node-box { direction: ltr; }
+
+  /* ---- layout: pyramid（上から下へ広がるピラミッド） ----
+     DOM構造は tree と同一のまま、積む向きを90度回す。接続線も役割が回転し、
+     背骨（vline）が横棒・引込線（hline）と出線（trunk-line）が縦棒になる。
+     横位置は layoutConnectorsPyramid() が実測して inline style で与える。
+     subtree は内容幅に縮む（max-content）。親幅100%のまま center すると
+     横に広い階層が左へはみ出し、scrollLeft=0 のまま左側が切れて見えなくなる。 */
+  #canvas.layout-pyramid > .subtree { width: max-content; margin-inline: auto; }
+  #canvas.layout-pyramid .subtree { flex-direction: column; align-items: center; width: max-content; }
+  #canvas.layout-pyramid .children-col {
+    flex-direction: row; align-items: flex-start;
+    margin-inline-start: 0; margin-top: var(--indent); padding: 0 14px;
+  }
+  #canvas.layout-pyramid .hline {
+    inset-inline-start: auto; top: calc(-1 * var(--indent) / 2);
+    width: 2px; height: calc(var(--indent) / 2);
+  }
+  #canvas.layout-pyramid .trunk-line {
+    inset-inline-start: auto; top: 100%;
+    width: 2px; height: calc(var(--indent) / 2);
+  }
+  #canvas.layout-pyramid .vline {
+    inset-inline-start: auto; top: calc(-1 * var(--indent) / 2);
+    width: 0; height: 2px;
+  }
+
+  /* ---- layout: radial（中心から放射状に広がる） ----
+     他3レイアウトの入れ子DOM＋CSS線では成立しないため、パネルを絶対配置し、
+     接続線は1枚のSVGにまとめて描く。座標は layoutConnectorsRadial() が実測後に与える。 */
+  #canvas.layout-radial { padding: 0; }
+  .radial-wrap { position: relative; margin: 0 auto; }
+  .radial-lines { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .radial-node {
+    position: absolute; display: flex; align-items: center; gap: 4px;
+    transform: translate(-50%, -50%); /* 与えた座標をパネルの中心に合わせる */
+  }
+
+  .node-box {
+    display: flex; flex-direction: row; align-items: stretch; gap: 4px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 8px 7px 6px;
+    box-shadow: var(--shadow); min-height: 20px; min-width: 140px; max-width: 360px;
+    cursor: pointer; position: relative;
+  }
+  .node-box.root { border-color: var(--accent); }
+  .node-box.selected { border-color: var(--selected-border); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .node-box.editing { border-color: var(--editing-border); }
+
+  /* 左：掴んで移動するドラッグハンドル（縦に全高） */
+  .drag-handle {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: var(--line); cursor: grab;
+    opacity: 0; padding: 1px 3px; user-select: none; flex-shrink: 0;
+    transition: opacity 0.15s;
+  }
+  .node-box:hover .drag-handle { opacity: 0.6; }
+  .drag-handle:active { cursor: grabbing; }
+
+  /* 右：上＝入力部、下＝操作部の2段構成 */
+  .node-content { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .node-main { display: flex; align-items: center; gap: 5px; width: 100%; }
+  .node-divider { height: 1px; background: var(--border); margin: 6px 0 4px; }
+
+  .btn-toggle {
+    padding: 2px 5px; font-size: 10px; border-radius: 5px;
+    color: var(--text-sub); flex-shrink: 0;
+  }
+
+  .node-text {
+    font-size: 13.5px; line-height: 1.4;
+    white-space: pre-wrap; word-break: break-word;
+    padding: 2px 4px; border-radius: 4px; flex: 1; min-width: 40px;
+  }
+  .node-text.placeholder { color: var(--text-sub); font-style: italic; }
+
+  .quill-editor { flex: 1; min-width: 140px; }
+  .quill-editor .ql-editor {
+    padding: 2px 4px; font-size: 13.5px; line-height: 1.4;
+    min-height: 100px; font-family: inherit; color: var(--text);
+    transition: min-height 0.2s ease;
+  }
+  .quill-editor .ql-editor.ql-blank::before {
+    font-style: italic; color: var(--text-sub); left: 4px; right: 4px;
+  }
+  .ql-bubble .ql-toolbar { border-radius: 6px; }
+  .ql-bubble .ql-tooltip { z-index: 200; }
+
+  .node-actions { display: none; align-items: center; gap: 2px; flex-wrap: wrap; }
+  .node-box.selected .node-actions { display: flex; }
+  .node-actions .node-actions-spacer { flex: 1; }
+  .node-actions button { padding: 3px 6px; font-size: 11px; line-height: 1; border-radius: 5px; }
+  .node-actions button.format-btn { min-width: 28px; }
+  .node-actions button.format-bold { font-weight: 700; }
+  .node-actions button.format-italic { font-style: italic; }
+  .node-actions button.format-underline { text-decoration: underline; }
+  .node-actions button.format-active {
+    background: var(--editing-border); border-color: var(--editing-border); color: var(--panel);
+  }
+  .node-actions button.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+  .collapsed-hint { font-size: 10.5px; color: var(--text-sub); margin-inline-start: 6px; white-space: nowrap; }
+
+  /* ---- DnD（自前ドラッグ） ----
+     ドラッグ中は動かしている本人のパネルのクローンだけがカーソルに追従し、他パネルのDOM位置は
+     一切変更しない（オーナー要望：ライブ並び替えで他パネルが「逃げる」体験を避けるため）。
+     判定はドロップの瞬間に一度だけ行い、ドラッグ中は視覚フィードバックの表示のみ行う。 */
+  .drag-clone {
+    position: fixed; pointer-events: none; z-index: 1000;
+    opacity: 0.85; box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  }
+  .node-box.drag-source { opacity: 0.35; }
+  .node-box.drop-into { box-shadow: 0 0 0 3px var(--accent), var(--shadow); }
+  .drop-sibling-line {
+    position: absolute; left: 0; right: 0; height: 3px; margin-top: -1px;
+    background: var(--accent); border-radius: 2px; pointer-events: none; z-index: 5;
+  }
+  /* pyramid のように兄弟が横に並ぶレイアウトでは挿入線も縦向きにする */
+  .drop-sibling-line.vertical {
+    top: 0; bottom: 0; right: auto; width: 3px; height: auto;
+    margin-top: 0; margin-left: -1px;
+  }
+
+  /* ---- MOD（コード注入）有効中の表示 ---- */
+  /* MOD有効中は「異常」ではなく「状態」の表示なので、他のUIと同じアクセント系でまとめる。
+     強い色（danger／editing-border）は警告モーダル側だけに使う。 */
+  .mod-badge {
+    display: none; align-items: center; gap: 6px;
+    padding: 3px 8px; border-radius: 6px; white-space: nowrap;
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid var(--accent);
+    font-size: 11.5px; font-weight: 700;
+  }
+  .mod-badge.on { display: inline-flex; }
+  .mod-badge button {
+    padding: 1px 6px; font-size: 11px; line-height: 1.4;
+    background: transparent; border-color: currentColor; color: inherit;
+  }
+  .mod-badge button:hover { background: var(--panel); border-color: currentColor; color: inherit; }
+  .mod-warning {
+    padding: 10px 12px; border-radius: 6px;
+    border: 1px solid var(--danger); background: var(--accent-soft);
+    font-size: 12.5px; line-height: 1.6;
+  }
+  .mod-meta { font-size: 12px; color: var(--text-sub); }
+  .mod-meta code { font-size: 11.5px; }
+
+  /* ---- Modals ---- */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+  }
+  .modal {
+    background: var(--panel); border-radius: 10px; padding: 18px;
+    width: min(640px, 92vw); max-height: 85vh;
+    display: flex; flex-direction: column; gap: 10px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3); overflow-y: auto;
+  }
+  .modal h2 { margin: 0; font-size: 14px; }
+  .modal textarea {
+    flex: 1; min-height: 280px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    padding: 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); resize: vertical;
+  }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* Settings modal */
+  .settings-section {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 12px 0; border-top: 1px solid var(--border);
+  }
+  .settings-label { font-size: 11.5px; font-weight: 700; color: var(--text-sub); letter-spacing: 0.06em; text-transform: uppercase; }
+  .hint-text { font-size: 11px; color: var(--text-sub); }
+  .num-input {
+    width: 62px; padding: 4px 6px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 12px; font-family: inherit;
+  }
+  .sc-table { border-collapse: collapse; width: 100%; }
+  .sc-table td { padding: 3px 6px; }
+  .sc-table .sc-label { font-size: 12.5px; }
+  .sc-input {
+    width: 180px; padding: 4px 6px; border: 1px solid var(--border);
+    border-radius: 4px; background: var(--bg); color: var(--text);
+    font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .sc-input:hover { border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="logo.png" alt="Logee" style="height:26px;width:26px;border-radius:6px;object-fit:cover;">
+  <h1>Logee</h1>
+  <button id="btnToggleList" title="ツリー一覧の表示切替">☰</button>
+  <button id="btnExpandAll">すべて展開</button>
+  <button id="btnCollapseAll">すべて折りたたむ</button>
+  <button id="btnReset">このツリーを消去</button>
+  <button id="btnUndo" disabled>元に戻す</button>
+  <div class="spacer"></div>
+  <span class="mod-badge" id="modBadge"></span>
+  <span class="save-status" id="saveStatus"></span>
+  <button id="btnImportMd">Markdown読取</button>
+  <button id="btnImportClipboard">クリップボードから読取</button>
+  <button class="primary" id="btnExportMd">Markdown出力</button>
+  <button id="btnSettings">設定</button>
+  <input type="file" id="mdFileInput" accept=".md" style="display:none">
+</header>
+
+<div id="main">
+  <aside id="treeList">
+    <div class="tree-list-head">
+      <span class="tree-list-label">ツリー</span>
+      <button id="btnNewTree" title="新しいツリーを追加">＋</button>
+    </div>
+    <div id="treeItems"></div>
+  </aside>
+  <div id="canvas"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js" integrity="sha384-QUJ+ckWz1M+a7w0UfG1sEn4pPrbQwSxGm/1TIPyioqXBrwuT9l4f9gdHWLDLbVWI" crossorigin="anonymous"></script>
+<script>
+(function () {
+  "use strict";
+
+  const STORAGE_KEY  = "logicTree.v2";  // { trees: [{ id, title, updatedAt, tree }], activeId }
+  const LEGACY_KEY   = "logicTree.v1";  // 単一ツリー時代のデータ。移行後も消さずに残す（手動復旧用）
+  const SETTINGS_KEY = "logicTree.settings";
+  const THEME_KEY    = "logicTree.theme";
+  let nextId = 1;      // ノードID採番。ツリー内でのみ一意であればよく、切替のたびに振り直す
+  let nextTreeId = 1;  // ツリーID採番。ストア全体で一意
+
+  // ---- Defaults ----
+  const DEFAULT_SHORTCUTS = {
+    addChild:   "Shift+Enter",
+    addSibling: "Enter",
+    edit:       "F2",
+    delete:     "Delete",
+    collapse:   "Ctrl+ArrowUp",
+    undo:       "Ctrl+z",
+    exportMd:   "Ctrl+Shift+E",
+    importMd:   "Ctrl+Shift+I",
+    importClipboard: "Ctrl+Shift+V",
+    moveUp:     "Alt+ArrowUp",
+    moveDown:   "Alt+ArrowDown",
+    moveLeft:   "Alt+ArrowLeft",
+    moveRight:  "Alt+ArrowRight",
+    zoomIn:     "Ctrl+=",
+    zoomOut:    "Ctrl+-",
+    zoomReset:  "Ctrl+0",
+  };
+  const ZOOM_MIN = 0.5, ZOOM_MAX = 2, ZOOM_STEP = 0.1;
+  const PAN_KEY_STEP = 80;
+  const CSS_VARS = [
+    "bg","panel","text","text-sub","line","accent","accent-soft",
+    "selected-border","editing-border","danger","border"
+  ];
+  // MOD（コード注入）用。activeLayout の初期化時に resolveLayout() から参照されるため、
+  // MOD本体の実装より手前で宣言しておく必要がある。
+  const MOD_LAYOUT = "logee-mod";
+  let modState = null;
+  const ACTION_LABELS = {
+    addChild:   "下位項目を追加",
+    addSibling: "同列項目を追加",
+    edit:       "編集開始",
+    delete:     "削除",
+    collapse:   "折りたたみ切替",
+    undo:       "元に戻す",
+    exportMd:   "Markdown出力",
+    importMd:   "Markdown読取",
+    importClipboard: "クリップボードから読取",
+    moveUp:     "上に移動",
+    moveDown:   "下に移動",
+    moveLeft:   "上の階層へ（昇格）",
+    moveRight:  "下の階層へ（降格）",
+    zoomIn:     "拡大",
+    zoomOut:    "縮小",
+    zoomReset:  "ズームをリセット",
+  };
+
+  // ---- Settings ----
+  let settings = (function () {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+      return {
+        indent: saved.indent || 28,
+        zoom: saved.zoom || 1,
+        mdHeadingLimit: saved.mdHeadingLimit || 0,
+        layout: saved.layout || "tree",
+        connector: saved.connector || "straight",
+        layoutParams: saved.layoutParams || {}, // レイアウト固有の調整値（radial の radiusStep 等）
+        // 狭い画面では初期状態を閉じる。一度でも手動で開閉したらその選択を優先する
+        sidebar: typeof saved.sidebar === "boolean" ? saved.sidebar : window.innerWidth >= 720,
+        shortcuts: Object.assign({}, DEFAULT_SHORTCUTS, saved.shortcuts || {}),
+      };
+    } catch (e) { return { indent: 28, zoom: 1, mdHeadingLimit: 0, layout: "tree", connector: "straight", layoutParams: {}, sidebar: window.innerWidth >= 720, shortcuts: Object.assign({}, DEFAULT_SHORTCUTS) }; }
+  })();
+  function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+
+  // ---- Zoom ----
+  // overflow:auto なキャンバスなので transform:scale ではなくレイアウトサイズにも反映される
+  // CSS zoom を使う。これによりスクロール範囲の再計算もブラウザ側で自然に行われる。
+  function applyZoom() {
+    document.getElementById("canvas").style.zoom = settings.zoom;
+  }
+  function setZoom(v) {
+    settings.zoom = Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v)) * 100) / 100;
+    saveSettings(); applyZoom(); relayoutConnectors();
+  }
+  function zoomIn()    { setZoom(settings.zoom + ZOOM_STEP); }
+  function zoomOut()   { setZoom(settings.zoom - ZOOM_STEP); }
+  function zoomReset() { setZoom(1); }
+
+  // ---- Storage ----
+  // v2 形式：{ trees: [{ id, title, updatedAt, tree }], activeId }
+  // 旧 v1（単一ツリー）は起動時に1本目として取り込む。v1 のキーは削除せず残す。
+
+  // ノードIDはツリー内でのみ一意。切替のたびにそのツリーの最大値+1へ振り直さないと
+  // 別ツリーのIDと衝突し、findNode() が意図しないノードを拾う。
+  function recalcNextId(root) {
+    let maxId = 0;
+    (function scan(n) {
+      const m = /^n(\d+)$/.exec(n.id);
+      if (m) maxId = Math.max(maxId, parseInt(m[1], 10));
+      (n.children || []).forEach(scan);
+    })(root);
+    nextId = maxId + 1;
+  }
+
+  function normalizeStore(data) {
+    data.trees = (data.trees || []).filter(t => t && t.id && t.tree);
+    if (data.trees.length === 0) return null;
+    let maxTreeId = 0;
+    data.trees.forEach(t => {
+      const m = /^t(\d+)$/.exec(t.id);
+      if (m) maxTreeId = Math.max(maxTreeId, parseInt(m[1], 10));
+      if (typeof t.title !== "string") t.title = "";
+      if (typeof t.updatedAt !== "number") t.updatedAt = Date.now();
+    });
+    nextTreeId = maxTreeId + 1;
+    if (!data.trees.some(t => t.id === data.activeId)) data.activeId = data.trees[0].id;
+    return data;
+  }
+
+  function loadStore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = normalizeStore(JSON.parse(raw) || {});
+        if (parsed) return parsed;
+      }
+    } catch (e) {}
+    try {
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy) {
+        const t = JSON.parse(legacy);
+        if (t && t.id) {
+          return normalizeStore({
+            trees: [{ id: "t1", title: "", updatedAt: Date.now(), tree: t }],
+            activeId: "t1",
+          });
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function defaultStore() {
+    nextTreeId = 1;
+    const entry = { id: "t" + (nextTreeId++), title: "", updatedAt: Date.now(), tree: defaultTree() };
+    return { trees: [entry], activeId: entry.id };
+  }
+
+  function activeEntry() { return store.trees.find(t => t.id === store.activeId) || store.trees[0]; }
+  function writeStore()  { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }
+
+  let saveTimer = null;
+  function save() {
+    const entry = activeEntry();
+    if (entry) { entry.tree = tree; entry.updatedAt = Date.now(); }
+    writeStore();
+    renderTreeList();
+    const el = document.getElementById("saveStatus");
+    if (el) {
+      el.textContent = "保存済み " + new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => { el.textContent = ""; }, 2500);
+    }
+  }
+
+  // ---- Model ----
+  function newNode(text) { return { id: "n" + (nextId++), text: text || "", collapsed: false, children: [] }; }
+  function defaultTree() { nextId = 1; return newNode(""); }
+  let store = loadStore() || defaultStore();
+  let tree  = activeEntry().tree;
+  recalcNextId(tree);
+  let selectedId = null;
+  let editingId  = null;
+  let activeQuill = null;
+
+  // ---- Undo ----
+  const UNDO_LIMIT = 50;
+  let undoStack = [];
+  function pushUndo() {
+    undoStack.push(JSON.stringify(tree));
+    if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+    refreshUndoButton();
+  }
+  function undo() {
+    if (undoStack.length === 0) return;
+    commitCurrentEdit();
+    tree = JSON.parse(undoStack.pop());
+    selectedId = null; editingId = null; activeQuill = null;
+    save(); render();
+    refreshUndoButton();
+  }
+  function refreshUndoButton() {
+    const btn = document.getElementById("btnUndo");
+    if (btn) btn.disabled = undoStack.length === 0;
+  }
+
+  // ---- Tree list（左カラム：複数ツリーの保存・切り替え） ----
+  // 名前変更中は renderTreeList() による再構築を止める。止めないと save() のたびに
+  // 入力欄ごと作り直されて入力が消える。
+  let renamingTreeId = null;
+
+  function treeLabel(entry) {
+    if (entry.title && entry.title.trim()) return entry.title.trim();
+    const plain = htmlToPlainText(entry.tree && entry.tree.text ? entry.tree.text : "");
+    const first = plain.split("\n").map(s => s.trim()).find(s => s);
+    return first || "無題のツリー";
+  }
+
+  function formatUpdatedAt(ms) {
+    const d = new Date(ms);
+    const time = d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    if (d.toDateString() === new Date().toDateString()) return time;
+    return (d.getMonth() + 1) + "/" + d.getDate() + " " + time;
+  }
+
+  function applySidebar() {
+    const el = document.getElementById("treeList");
+    if (el) el.classList.toggle("hidden", !settings.sidebar);
+  }
+
+  function renderTreeList() {
+    if (renamingTreeId) return;
+    const host = document.getElementById("treeItems");
+    if (!host) return;
+    host.innerHTML = "";
+    store.trees.forEach((entry) => {
+      const item = document.createElement("div");
+      item.className = "tree-item" + (entry.id === store.activeId ? " active" : "");
+      item.dataset.treeId = entry.id;
+      item.title = "クリックで切替／ダブルクリックで名前変更";
+
+      const body = document.createElement("div");
+      body.className = "tree-item-body";
+      const title = document.createElement("div");
+      title.className = "tree-item-title";
+      title.textContent = treeLabel(entry);
+      const meta = document.createElement("div");
+      meta.className = "tree-item-meta";
+      meta.textContent = formatUpdatedAt(entry.updatedAt);
+      body.appendChild(title);
+      body.appendChild(meta);
+      item.appendChild(body);
+
+      const del = document.createElement("button");
+      del.className = "tree-item-del";
+      del.textContent = "✕";
+      del.title = "このツリーを削除";
+      del.addEventListener("click", (e) => { e.stopPropagation(); deleteTree(entry.id); });
+      item.appendChild(del);
+
+      item.addEventListener("click", () => switchTree(entry.id));
+      // dblclick の前に click が走って一覧が組み直されるため、DOM参照ではなくIDを渡す
+      item.addEventListener("dblclick", (e) => { e.stopPropagation(); startRenameTree(entry.id); });
+      host.appendChild(item);
+    });
+  }
+
+  function startRenameTree(id) {
+    const entry = store.trees.find(t => t.id === id);
+    const item  = document.querySelector(`#treeItems [data-tree-id="${id}"]`);
+    if (!entry || !item) return;
+    const body  = item.querySelector(".tree-item-body");
+    const title = item.querySelector(".tree-item-title");
+    if (!body || !title) return;
+
+    renamingTreeId = id;
+    const input = document.createElement("input");
+    input.className = "tree-item-input";
+    input.value = entry.title || "";
+    input.placeholder = treeLabel(entry);
+    body.replaceChild(input, title);
+    input.focus();
+    input.select();
+
+    let done = false;
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      if (commit) { entry.title = input.value.trim(); entry.updatedAt = Date.now(); writeStore(); }
+      renamingTreeId = null;
+      renderTreeList();
+    };
+    input.addEventListener("click",    e => e.stopPropagation());
+    input.addEventListener("dblclick", e => e.stopPropagation());
+    input.addEventListener("blur", () => finish(true));
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation(); // Enter/Delete等をアプリ全体のショートカットへ伝播させない
+      if (e.key === "Enter")  { e.preventDefault(); finish(true); }
+      if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    });
+  }
+
+  function switchTree(id) {
+    if (id === store.activeId) return;
+    commitCurrentEdit();
+    save();
+    store.activeId = id;
+    tree = activeEntry().tree;
+    recalcNextId(tree);
+    selectedId = null; editingId = null; activeQuill = null;
+    undoStack = []; refreshUndoButton(); // 別ツリーの履歴を持ち越すと他ツリーの状態を復元してしまう
+    writeStore();
+    renderTreeList();
+    render();
+  }
+
+  function addTree() {
+    commitCurrentEdit();
+    save();
+    nextId = 1;
+    const entry = { id: "t" + (nextTreeId++), title: "", updatedAt: Date.now(), tree: newNode("") };
+    store.trees.push(entry);
+    store.activeId = entry.id;
+    tree = entry.tree;
+    selectedId = null; editingId = null; activeQuill = null;
+    undoStack = []; refreshUndoButton();
+    save();
+    render();
+  }
+
+  function deleteTree(id) {
+    const idx = store.trees.findIndex(t => t.id === id);
+    if (idx < 0) return;
+    if (store.trees.length === 1) {
+      alert("最後の1本は削除できません。中身だけ空にする場合は「このツリーを消去」を使ってください。");
+      return;
+    }
+    if (!confirm(`「${treeLabel(store.trees[idx])}」を削除しますか？（元に戻せません）`)) return;
+    const wasActive = store.activeId === id;
+    store.trees.splice(idx, 1);
+    if (wasActive) {
+      const next = store.trees[Math.min(idx, store.trees.length - 1)];
+      store.activeId = next.id;
+      tree = next.tree;
+      recalcNextId(tree);
+      selectedId = null; editingId = null; activeQuill = null;
+      undoStack = []; refreshUndoButton();
+    }
+    writeStore();
+    renderTreeList();
+    if (wasActive) render();
+  }
+
+  // ---- Theme ----
+  function applyTheme(colors) {
+    Object.entries(colors).forEach(([k, v]) =>
+      document.documentElement.style.setProperty("--" + k, v));
+  }
+  function saveTheme(data) { localStorage.setItem(THEME_KEY, JSON.stringify(data)); }
+  (function loadSavedTheme() {
+    try {
+      const raw = localStorage.getItem(THEME_KEY);
+      if (raw) { const d = JSON.parse(raw); if (d && d.colors) applyTheme(d.colors); }
+    } catch (e) {}
+  })();
+  function collectCurrentThemeColors() {
+    const st = getComputedStyle(document.documentElement);
+    const colors = {};
+    CSS_VARS.forEach(v => { colors[v] = st.getPropertyValue("--" + v).trim(); });
+    return colors;
+  }
+  function downloadJson(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a"); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+  function importConfig(jsonData) {
+    switch (jsonData.type) {
+      case "theme":
+        if (jsonData.colors) { applyTheme(jsonData.colors); saveTheme(jsonData); }
+        break;
+      case "logee-config": {
+        let needsRender = false;
+        if (jsonData.theme && jsonData.theme.colors) {
+          applyTheme(jsonData.theme.colors);
+          saveTheme({
+            type: "theme",
+            name: (jsonData.name || "Custom Config") + " (theme)",
+            version: jsonData.version || "1.0.0",
+            colors: jsonData.theme.colors,
+          });
+        }
+        if (jsonData.keybinds) {
+          settings.shortcuts = Object.assign({}, settings.shortcuts, jsonData.keybinds);
+          saveSettings();
+        }
+        if (jsonData.template) {
+          activeLayout    = resolveLayout(jsonData.template.layout);
+          activeConnector = resolveConnector(jsonData.template.connector);
+          settings.layout = activeLayout;
+          settings.connector = activeConnector;
+          settings.layoutParams = (jsonData.template.params && typeof jsonData.template.params === "object")
+            ? jsonData.template.params : {};
+          saveSettings();
+          needsRender = true;
+        }
+        if (needsRender) render();
+        break;
+      }
+      // コードを含む拡張。標準の logee-config とは別経路・別の審査基準として扱う
+      case "logee-mod":
+        alert('MODファイルは設定の「MOD（コード入り）」の読込口から読み込んでください。');
+        break;
+      case "template": break; // 将来実装（単体 .logee-template.json 用）
+    }
+  }
+
+  // ---- Shortcut helpers ----
+  // "Ctrl" 表記は Windows/Linux の Ctrl と Mac の ⌘（Cmd）の両方にマッチさせる。
+  function matchShortcut(e, def) {
+    if (!def) return false;
+    const parts    = def.split("+");
+    const key      = parts[parts.length - 1];
+    const needCtrl  = parts.includes("Ctrl");
+    const needShift = parts.includes("Shift");
+    const needAlt   = parts.includes("Alt");
+    const hasCtrl   = e.ctrlKey || e.metaKey;
+    // "=" キーは配列によって「+」を出すのにShiftが要る／要らないが揺れるため、
+    // ズームインに限りShiftの状態を問わず "=" と "+" の両方にマッチさせる。
+    if (key === "=") {
+      return (e.key === "=" || e.key === "+") && hasCtrl === needCtrl && e.altKey === needAlt;
+    }
+    return e.key === key && hasCtrl === needCtrl && e.shiftKey === needShift && e.altKey === needAlt;
+  }
+  // 修飾キー単体のkeydownでは確定しない（空文字を返す）。Ctrl+Shift+K のような組み合わせは
+  // 必ず Ctrl の keydown が先に来るため、ここで弾かないと "Ctrl" だけで確定してしまい、
+  // 修飾キー付きのショートカットを一切割り当てられなくなる。
+  const MODIFIER_KEYS = ["Control", "Shift", "Alt", "Meta"];
+  function normalizeKey(e) {
+    if (MODIFIER_KEYS.includes(e.key)) return "";
+    const parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push("Ctrl");
+    if (e.shiftKey) parts.push("Shift");
+    if (e.altKey)   parts.push("Alt");
+    parts.push(e.key);
+    return parts.join("+");
+  }
+
+  // ---- HTML helpers ----
+  function htmlToMarkdown(html) {
+    if (!html) return "";
+    if (!html.includes("<")) return html;
+    return html
+      .replace(/<strong>([\s\S]*?)<\/strong>/gi, "**$1**")
+      .replace(/<em>([\s\S]*?)<\/em>/gi, "_$1_")
+      .replace(/<u>([\s\S]*?)<\/u>/gi, "$1")
+      .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, "- $1")
+      .replace(/<\/?(ul|ol|p|br)[^>]*>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ")
+      .replace(/\n{3,}/g, "\n\n").trim();
+  }
+  function htmlToPlainText(html) {
+    if (!html) return "";
+    if (!html.includes("<")) return html;
+    const d = document.createElement("div");
+    d.innerHTML = html;
+    return (d.textContent || d.innerText || "").trim();
+  }
+
+  // ---- Node lookup ----
+  function findNode(id, node) {
+    node = node || tree;
+    if (node.id === id) return node;
+    for (const c of node.children) { const f = findNode(id, c); if (f) return f; }
+    return null;
+  }
+  function findParent(id, node, parent) {
+    node = node || tree;
+    if (node.id === id) return parent;
+    for (const c of node.children) {
+      const f = findParent(id, c, node);
+      if (f !== undefined) return f;
+    }
+    return undefined;
+  }
+
+  // ---- Commit editing ----
+  function commitCurrentEdit() {
+    if (!activeQuill) return;
+    if (editingId) {
+      const node = findNode(editingId);
+      if (node) {
+        // インライン書式をカーソル位置で切り替えた直後でも、Quill内部の
+        // カーソル要素や空の書式タグを本文として保存しない。
+        activeQuill.blur();
+        const cleanRoot = activeQuill.root.cloneNode(true);
+        cleanRoot.querySelectorAll(".ql-cursor").forEach((el) => el.remove());
+        cleanRoot.querySelectorAll("strong, em, u, s, span").forEach((el) => {
+          if (!el.textContent) el.remove();
+        });
+        const html = cleanRoot.innerHTML;
+        const newText = (html === "<p><br></p>") ? "" : html;
+        if (newText !== node.text) {
+          pushUndo();
+          node.text = newText;
+          save();
+        }
+      }
+    }
+    activeQuill = null;
+    editingId   = null;
+  }
+
+  function updateFormatButtons(quill) {
+    if (!quill) return;
+    const current = quill.getFormat();
+    document.querySelectorAll(".node-box.editing .format-btn").forEach((button) => {
+      const format = button.dataset.format;
+      const value  = button.dataset.value;
+      const active = value ? current[format] === value : current[format] === true;
+      button.classList.toggle("format-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+  }
+
+  function toggleCurrentFormat(format, value) {
+    if (!activeQuill) return;
+    const current = activeQuill.getFormat();
+    const next = value ? (current[format] === value ? false : value) : !current[format];
+    activeQuill.format(format, next, "user");
+    activeQuill.focus();
+    updateFormatButtons(activeQuill);
+  }
+
+  // ---- Node operations ----
+  function addSibling(id) {
+    commitCurrentEdit(); // 別ノードをアクティブ化する前に、今アクティブなノードの編集内容を保存する
+    const parent = findParent(id);
+    if (!parent) return;
+    pushUndo();
+    const s = newNode("");
+    const idx = parent.children.findIndex(c => c.id === id);
+    parent.children.splice(idx + 1, 0, s);
+    selectedId = s.id; editingId = s.id;
+    save(); render();
+  }
+  function addChild(id) {
+    commitCurrentEdit(); // 別ノードをアクティブ化する前に、今アクティブなノードの編集内容を保存する
+    const node = findNode(id);
+    if (!node) return;
+    pushUndo();
+    const child = newNode("");
+    node.children.push(child);
+    node.collapsed = false;
+    selectedId = child.id; editingId = child.id;
+    save(); render();
+  }
+  function deleteNode(id) {
+    const parent = findParent(id);
+    if (!parent) return;
+    pushUndo();
+    const idx = parent.children.findIndex(c => c.id === id);
+    const node = parent.children[idx];
+    // 削除したノードの子は、その階層（元の位置）に昇格させて生存させる
+    parent.children.splice(idx, 1, ...node.children);
+    if (selectedId === id) { selectedId = null; editingId = null; activeQuill = null; }
+    save(); render();
+  }
+  function promoteNode(id) {
+    // このノードを上位階層へ移動（親と同列にし、親の直後へ）
+    commitCurrentEdit();
+    const parent = findParent(id);
+    if (!parent) return;
+    const grandparent = findParent(parent.id);
+    if (!grandparent) return;
+    pushUndo();
+    const idx  = parent.children.findIndex(c => c.id === id);
+    const node = parent.children[idx];
+    parent.children.splice(idx, 1);
+    const pi = grandparent.children.findIndex(c => c.id === parent.id);
+    grandparent.children.splice(pi + 1, 0, node);
+    selectedId = id;
+    save(); render();
+  }
+  function demoteNode(id) {
+    // このノードを下位階層へ移動（直前の同列ノードの子にする）
+    commitCurrentEdit();
+    const parent = findParent(id);
+    if (!parent) return;
+    const idx = parent.children.findIndex(c => c.id === id);
+    if (idx <= 0) return;
+    pushUndo();
+    const prev = parent.children[idx - 1];
+    const node = parent.children[idx];
+    parent.children.splice(idx, 1);
+    prev.children.push(node);
+    prev.collapsed = false;
+    selectedId = id;
+    save(); render();
+  }
+  function reorderSibling(id, dir) {
+    // 同列内でノードの並び順を1つ入れ替える（dir: -1=上へ, +1=下へ）
+    commitCurrentEdit();
+    const parent = findParent(id);
+    if (!parent) return;
+    const idx = parent.children.findIndex(c => c.id === id);
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= parent.children.length) return;
+    pushUndo();
+    const [node] = parent.children.splice(idx, 1);
+    parent.children.splice(newIdx, 0, node);
+    selectedId = id;
+    save(); render();
+  }
+  // ---- Keyboard ----
+  document.addEventListener("keydown", (e) => {
+    const sc = settings.shortcuts;
+    // ズームは編集中・未選択を問わず常に効かせる（キャンバス全体に対する操作のため）
+    if (matchShortcut(e, sc.zoomIn))    { e.preventDefault(); zoomIn();    return; }
+    if (matchShortcut(e, sc.zoomOut))   { e.preventDefault(); zoomOut();   return; }
+    if (matchShortcut(e, sc.zoomReset)) { e.preventDefault(); zoomReset(); return; }
+    if (editingId) {
+      // Escapeのみ横取りし、編集を終了して選択状態に戻す。それ以外はQuill（本文編集）にそのまま渡す。
+      if (e.key === "Escape") { commitCurrentEdit(); render(); }
+      return;
+    }
+    // 上下矢印キー単体（修飾キーなし）はキャンバスの縦スクロール（センター移動）に割り当てる。
+    // Ctrl+ArrowUp（折りたたみ）・Alt+ArrowUp/Down（ノード並び替え）とは修飾キーの有無で区別する。
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      document.getElementById("canvas").scrollBy({ top: (e.key === "ArrowUp" ? -1 : 1) * PAN_KEY_STEP });
+      return;
+    }
+    if (selectedId) {
+      if (matchShortcut(e, sc.addChild))   { e.preventDefault(); addChild(selectedId); return; }
+      if (matchShortcut(e, sc.addSibling)) { e.preventDefault(); addSibling(selectedId); return; }
+      if (matchShortcut(e, sc.edit))       { e.preventDefault(); editingId = selectedId; render(); return; }
+      if (matchShortcut(e, sc.delete))     { e.preventDefault(); deleteNode(selectedId); return; }
+      if (matchShortcut(e, sc.collapse)) {
+        const node = findNode(selectedId);
+        if (node && node.children.length > 0) { e.preventDefault(); node.collapsed = !node.collapsed; save(); render(); }
+        return;
+      }
+      if (matchShortcut(e, sc.moveUp))    { e.preventDefault(); reorderSibling(selectedId, -1); return; }
+      if (matchShortcut(e, sc.moveDown))  { e.preventDefault(); reorderSibling(selectedId, 1); return; }
+      if (matchShortcut(e, sc.moveLeft))  { e.preventDefault(); promoteNode(selectedId); return; }
+      if (matchShortcut(e, sc.moveRight)) { e.preventDefault(); demoteNode(selectedId); return; }
+    }
+    if (matchShortcut(e, sc.undo))      { e.preventDefault(); undo(); return; }
+    if (matchShortcut(e, sc.exportMd))  { e.preventDefault(); doExportMd(); return; }
+    if (matchShortcut(e, sc.importMd))  { e.preventDefault(); document.getElementById("mdFileInput").click(); return; }
+    if (matchShortcut(e, sc.importClipboard)) { e.preventDefault(); importFromClipboard(); return; }
+  });
+
+  // ---- Renderers ----
+  // layout（配置）と connector（接続線）を独立した2軸として登録する。
+  // tree系3レイアウトは同じ renderSubtree() が生成する入れ子DOMを使い、キャンバスに付ける
+  // cssClass と接続線の実測計算だけを差し替える。radial だけは入れ子DOMでは成立しないため、
+  // パネルを絶対配置してSVGで線を引く別方式を取る（パネル自体は buildNodeBox() で共通）。
+  // これで DnD・Undo・編集・Markdown入出力はレイアウト非依存のまま保たれる。
+  // siblingAxis は兄弟が並ぶ向き。DnDの「子にする／兄弟として挿入する」判定軸に使う。
+  const Renderers = {
+    layouts: {
+      "tree":     { render: renderSubtree, layoutConnectors: layoutConnectors,        cssClass: "layout-tree",     siblingAxis: "y" },
+      "tree-rtl": { render: renderSubtree, layoutConnectors: layoutConnectors,        cssClass: "layout-tree-rtl", siblingAxis: "y" },
+      "pyramid":  { render: renderSubtree, layoutConnectors: layoutConnectorsPyramid, cssClass: "layout-pyramid",  siblingAxis: "x" },
+      "radial":   { render: renderRadial,  layoutConnectors: layoutConnectorsRadial,  cssClass: "layout-radial",   siblingAxis: "angle" },
+      // MOD（#97）。描画と操作は radial と同じで、座標計算だけをサンドボックス越しに委ねる
+      "logee-mod": { render: renderRadial, layoutConnectors: layoutConnectorsMod,     cssClass: "layout-radial",   siblingAxis: "angle" },
+    },
+    connectors: { straight: {} }, // 描画切替の実装なし。値の保持・往復のみ対応
+  };
+  // MODは永続化しないため、MODが読み込まれていない状態では選べないレイアウトとして扱う
+  function resolveLayout(name) {
+    if (name === MOD_LAYOUT && !modState) return "tree";
+    return Renderers.layouts[name] ? name : "tree";
+  }
+  function resolveConnector(name) { return Renderers.connectors[name] ? name : "straight"; }
+  let activeLayout    = resolveLayout(settings.layout);
+  let activeConnector = resolveConnector(settings.connector);
+  function currentLayout() { return Renderers.layouts[activeLayout] || Renderers.layouts.tree; }
+  // ズーム・インデント変更・リサイズなど、描画し直さずに線だけ引き直したいときの共通入口
+  function relayoutConnectors() { currentLayout().layoutConnectors(); }
+
+  function render() {
+    commitCurrentEdit();
+    const canvas = document.getElementById("canvas");
+    canvas.innerHTML = "";
+    const layout = currentLayout();
+    canvas.classList.remove(...Object.values(Renderers.layouts).map(l => l.cssClass));
+    canvas.classList.add(layout.cssClass);
+    canvas.appendChild(layout.render(tree, true));
+    layout.layoutConnectors();
+    initDnD();
+
+    if (editingId) {
+      const editorDiv = canvas.querySelector(`.quill-editor[data-id="${editingId}"]`);
+      if (editorDiv) {
+        const node = findNode(editingId);
+        const q = new Quill(editorDiv, {
+          theme: "bubble",
+          placeholder: editorDiv.dataset.placeholder || "入力",
+          modules: { toolbar: false },
+          bounds: document.body,
+        });
+        if (node && node.text) {
+          if (node.text.includes("<")) { q.root.innerHTML = node.text; }
+          else { q.setText(node.text); }
+        }
+        activeQuill = q;
+        q.on("selection-change", (range) => { if (range) updateFormatButtons(q); });
+        q.on("text-change", () => updateFormatButtons(q));
+        q.focus();
+        updateFormatButtons(q);
+      }
+    }
+  }
+
+  // ノードの箱（本文・操作ボタン・ドラッグハンドル）を組み立てる共通部品。
+  // 接続線や入れ子コンテナなどレイアウト固有の要素は一切含めないので、入れ子DOMを使う
+  // tree 系からも、絶対配置の radial からも同じものを使える。
+  function buildNodeBox(node, isRoot) {
+    // selected：選択中（操作ボタン・ショートカットの対象）。editing：本文がQuillで編集可能な状態。
+    // クリックで選択のみ行い、編集開始はダブルクリック／Enter・F2ショートカットに委ねる。
+    const isSelected = selectedId === node.id;
+    const isEditing  = editingId === node.id;
+
+    const box = document.createElement("div");
+    box.className = "node-box"
+      + (isRoot ? " root" : "")
+      + (isSelected ? " selected" : "")
+      + (isEditing ? " editing" : "");
+    box.dataset.nodeId = node.id; // DnDの対象特定はDOMの入れ子構造ではなくこの属性で行う
+
+    box.addEventListener("click", (e) => {
+      if (e.target.closest("button") || e.target.classList.contains("drag-handle")) return;
+      if (isSelected) return;
+      commitCurrentEdit();
+      selectedId = node.id;
+      render();
+      e.stopPropagation();
+    });
+    box.addEventListener("dblclick", (e) => {
+      if (e.target.closest("button") || e.target.classList.contains("drag-handle")) return;
+      if (isEditing) return;
+      commitCurrentEdit();
+      selectedId = node.id; editingId = node.id;
+      render();
+      e.stopPropagation();
+    });
+
+    // 左：ドラッグハンドル（掴んで移動、box全高）
+    const handle = document.createElement("span");
+    handle.className = "drag-handle";
+    handle.textContent = "⠿";
+    handle.title = "ドラッグして移動";
+    box.appendChild(handle);
+
+    // 右：上（入力部）・下（操作部）の2段
+    const content = document.createElement("div");
+    content.className = "node-content";
+
+    const main = document.createElement("div");
+    main.className = "node-main";
+
+    // Collapse toggle (only when selected and has children)
+    if (node.children.length > 0 && isSelected) {
+      const toggle = document.createElement("button");
+      toggle.className = "btn-toggle";
+      toggle.textContent = node.collapsed ? "▶" : "▼";
+      toggle.title = node.collapsed ? "展開" : "折りたたむ";
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        node.collapsed = !node.collapsed; save(); render();
+      });
+      main.appendChild(toggle);
+    }
+
+    // Content（編集中のみQuillエディタ。選択のみのときはテキスト表示のまま）
+    if (isEditing) {
+      const editorDiv = document.createElement("div");
+      editorDiv.className = "quill-editor";
+      editorDiv.dataset.id = node.id;
+      editorDiv.dataset.placeholder = isRoot ? "テーマを入力" : "項目を入力";
+      main.appendChild(editorDiv);
+    } else {
+      const span = document.createElement("span");
+      const plain  = htmlToPlainText(node.text);
+      const hasTxt = plain.trim().length > 0;
+      span.className = "node-text" + (hasTxt ? "" : " placeholder");
+      if (hasTxt && node.text.includes("<")) { span.innerHTML = node.text; }
+      else { span.textContent = hasTxt ? plain : (isRoot ? "クリックしてテーマを入力" : "クリックして入力"); }
+      main.appendChild(span);
+    }
+    content.appendChild(main);
+
+    // Action buttons（選択中は構造操作、編集中は書式操作へ切り替える）
+    if (isSelected) {
+      const divider = document.createElement("div");
+      divider.className = "node-divider";
+      content.appendChild(divider);
+
+      const actions = document.createElement("div");
+      actions.className = "node-actions";
+
+      if (isEditing) {
+        const addFormatButton = (label, title, format, value, extraClass) => {
+          const button = document.createElement("button");
+          button.className = "format-btn" + (extraClass ? " " + extraClass : "");
+          button.textContent = label;
+          button.title = title;
+          button.dataset.format = format;
+          if (value) button.dataset.value = value;
+          button.setAttribute("aria-pressed", "false");
+          button.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+          button.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toggleCurrentFormat(format, value);
+          });
+          actions.appendChild(button);
+        };
+        addFormatButton("B", "太字", "bold", null, "format-bold");
+        addFormatButton("I", "斜体", "italic", null, "format-italic");
+        addFormatButton("U", "下線", "underline", null, "format-underline");
+        addFormatButton("• 箇条書き", "箇条書き", "list", "bullet", "");
+      } else {
+        const btnChild = document.createElement("button");
+        btnChild.textContent = "＋下位";
+        btnChild.title = "下位項目を追加";
+        btnChild.addEventListener("click", (e) => { e.stopPropagation(); addChild(node.id); });
+        actions.appendChild(btnChild);
+
+        if (!isRoot) {
+          const btnSib = document.createElement("button");
+          btnSib.textContent = "＋同列";
+          btnSib.title = "同列に追加";
+          btnSib.addEventListener("click", (e) => { e.stopPropagation(); addSibling(node.id); });
+          actions.appendChild(btnSib);
+
+          const spacer = document.createElement("div");
+          spacer.className = "node-actions-spacer";
+          actions.appendChild(spacer);
+
+          const parent = findParent(node.id);
+          const grandparent = parent ? findParent(parent.id) : null;
+          const idx = parent ? parent.children.findIndex(c => c.id === node.id) : -1;
+
+          const btnPromote = document.createElement("button");
+          btnPromote.textContent = "上位にする";
+          btnPromote.title = "このパネルを上位階層へ移動";
+          btnPromote.disabled = !grandparent;
+          btnPromote.addEventListener("click", (e) => { e.stopPropagation(); promoteNode(node.id); });
+          actions.appendChild(btnPromote);
+
+          const btnDemote = document.createElement("button");
+          btnDemote.textContent = "下位にする";
+          btnDemote.title = "このパネルを下位階層へ移動";
+          btnDemote.disabled = idx <= 0;
+          btnDemote.addEventListener("click", (e) => { e.stopPropagation(); demoteNode(node.id); });
+          actions.appendChild(btnDemote);
+
+          const btnDel = document.createElement("button");
+          btnDel.className = "danger";
+          btnDel.textContent = "✕";
+          btnDel.title = "削除";
+          btnDel.addEventListener("click", (e) => { e.stopPropagation(); deleteNode(node.id); });
+          actions.appendChild(btnDel);
+        }
+      }
+      content.appendChild(actions);
+    }
+    box.appendChild(content);
+    return box;
+  }
+
+  function renderSubtree(node, isRoot) {
+    const subtree = document.createElement("div");
+    subtree.className = "subtree";
+    subtree.dataset.id = node.id;
+
+    const row = document.createElement("div");
+    row.className = "node-row";
+    if (!isRoot) {
+      const hline = document.createElement("div");
+      hline.className = "hline";
+      row.appendChild(hline);
+    }
+    row.appendChild(buildNodeBox(node, isRoot));
+    subtree.appendChild(row);
+
+    if (node.children.length > 0) {
+      if (node.collapsed) {
+        row.appendChild(buildCollapsedHint(node));
+      } else {
+        const trunk = document.createElement("div");
+        trunk.className = "trunk-line";
+        row.appendChild(trunk);
+
+        const col = document.createElement("div");
+        col.className = "children-col";
+        const vline = document.createElement("div");
+        vline.className = "vline";
+        col.appendChild(vline);
+        node.children.forEach((child) => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "child-wrapper";
+          wrapper.appendChild(renderSubtree(child, false));
+          col.appendChild(wrapper);
+        });
+        subtree.appendChild(col);
+      }
+    }
+    return subtree;
+  }
+
+  function buildCollapsedHint(node) {
+    const hint = document.createElement("span");
+    hint.className = "collapsed-hint";
+    hint.textContent = `（${countNodes(node) - 1}件を折りたたみ中）`;
+    return hint;
+  }
+
+  function countNodes(node) {
+    return 1 + node.children.reduce((s, c) => s + countNodes(c), 0);
+  }
+
+  function layoutConnectors() {
+    document.querySelectorAll(".children-col").forEach((col) => {
+      const colRect = col.getBoundingClientRect();
+      const vline   = col.querySelector(":scope > .vline");
+
+      // 親パネル自身から伸びるトランク線（親の右端→背骨の付け根）の縦位置を、親のボックス中心に合わせる
+      const parentRow = col.parentElement.querySelector(":scope > .node-row");
+      const parentBox = parentRow ? parentRow.querySelector(":scope > .node-box") : null;
+      const trunk     = parentRow ? parentRow.querySelector(":scope > .trunk-line") : null;
+      if (trunk && parentBox) {
+        const parentRowRect  = parentRow.getBoundingClientRect();
+        const parentBoxRect  = parentBox.getBoundingClientRect();
+        const centerYInRow   = parentBoxRect.top + parentBoxRect.height / 2 - parentRowRect.top;
+        trunk.style.top      = Math.round(centerYInRow - 1) + "px";
+      }
+
+      let minY = Infinity, maxY = -Infinity;
+      col.querySelectorAll(":scope > .child-wrapper").forEach((wrapper) => {
+        const row = wrapper.querySelector(":scope > .subtree > .node-row");
+        const box = row ? row.querySelector(":scope > .node-box") : null;
+        if (!row || !box) return;
+        const boxRect      = box.getBoundingClientRect();
+        const centerYInCol = boxRect.top + boxRect.height / 2 - colRect.top;
+        minY = Math.min(minY, centerYInCol);
+        maxY = Math.max(maxY, centerYInCol);
+        const hline = row.querySelector(":scope > .hline");
+        if (hline) {
+          const rowRect      = row.getBoundingClientRect();
+          const centerYInRow = boxRect.top + boxRect.height / 2 - rowRect.top;
+          hline.style.top    = Math.round(centerYInRow - 1) + "px";
+        }
+      });
+      // Math.round() でサブピクセル位置による2pxラインのアンチエイリアスぼやけを防ぎ、線をくっきり表示する
+      if (vline && isFinite(minY)) {
+        vline.style.top    = Math.round(minY) + "px";
+        vline.style.height = Math.max(0, Math.round(maxY - minY)) + "px";
+      }
+    });
+  }
+
+  // pyramid レイアウト用。layoutConnectors() の縦横を入れ替えただけの対応版で、
+  // 背骨（vline）は子の左端中心〜右端中心を結ぶ横棒、引込線（hline）と出線（trunk-line）は
+  // 各ボックスの中心X に合わせる縦棒になる。
+  function layoutConnectorsPyramid() {
+    document.querySelectorAll(".children-col").forEach((col) => {
+      const colRect = col.getBoundingClientRect();
+      const vline   = col.querySelector(":scope > .vline");
+
+      const parentRow = col.parentElement.querySelector(":scope > .node-row");
+      const parentBox = parentRow ? parentRow.querySelector(":scope > .node-box") : null;
+      const trunk     = parentRow ? parentRow.querySelector(":scope > .trunk-line") : null;
+      if (trunk && parentBox) {
+        const parentRowRect = parentRow.getBoundingClientRect();
+        const parentBoxRect = parentBox.getBoundingClientRect();
+        const centerXInRow  = parentBoxRect.left + parentBoxRect.width / 2 - parentRowRect.left;
+        trunk.style.left    = Math.round(centerXInRow - 1) + "px";
+      }
+
+      let minX = Infinity, maxX = -Infinity;
+      col.querySelectorAll(":scope > .child-wrapper").forEach((wrapper) => {
+        const row = wrapper.querySelector(":scope > .subtree > .node-row");
+        const box = row ? row.querySelector(":scope > .node-box") : null;
+        if (!row || !box) return;
+        const boxRect      = box.getBoundingClientRect();
+        const centerXInCol = boxRect.left + boxRect.width / 2 - colRect.left;
+        minX = Math.min(minX, centerXInCol);
+        maxX = Math.max(maxX, centerXInCol);
+        const hline = row.querySelector(":scope > .hline");
+        if (hline) {
+          const rowRect      = row.getBoundingClientRect();
+          const centerXInRow = boxRect.left + boxRect.width / 2 - rowRect.left;
+          hline.style.left   = Math.round(centerXInRow - 1) + "px";
+        }
+      });
+      if (vline && isFinite(minX)) {
+        vline.style.left  = Math.round(minX) + "px";
+        vline.style.width = Math.max(0, Math.round(maxX - minX)) + "px";
+      }
+    });
+  }
+
+  // ---- layout: radial（放射状） ----
+  // 座標計算だけを純粋な関数として切り出す。ツリーと各パネルの実測サイズを受け取り、
+  // パネルごとの座標を返すだけでDOMには一切触れない。issue #97（コード注入MOD）は、
+  // この契約をそのままサンドボックス越しに差し替える口として使う。
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const DEFAULT_RADIAL_PARAMS = { radiusStep: 180, startAngle: -90, sweep: 360, gap: 24 };
+
+  const LayoutEngines = {
+    radial(root, sizes, params) {
+      const p     = Object.assign({}, DEFAULT_RADIAL_PARAMS, params || {});
+      const step  = Math.max(40, Number(p.radiusStep) || DEFAULT_RADIAL_PARAMS.radiusStep);
+      const gap   = Math.max(0, Number(p.gap) || 0);
+      const sweep = (Number(p.sweep) || 360) * Math.PI / 180;
+      const start = (Number(p.startAngle) || 0) * Math.PI / 180;
+
+      // 折りたたみ中のノードは葉として数える（子孫は描画しないので角度を割り当てない）
+      const leaves = new Map();
+      (function countLeaves(n) {
+        if (n.collapsed || n.children.length === 0) { leaves.set(n.id, 1); return 1; }
+        const c = n.children.reduce((s, ch) => s + countLeaves(ch), 0);
+        leaves.set(n.id, c);
+        return c;
+      })(root);
+
+      // 角度を先に決める。各サブツリーには自分が抱える葉の数に比例したセクターを与える。
+      // 子の数で等分すると枝の大きさが反映されず、葉の多い枝ほど内部で重なる。
+      const angles = new Map();
+      const spans  = new Map();
+      const depths = new Map();
+      let maxDepth = 0;
+      (function assign(n, depth, a0, a1) {
+        depths.set(n.id, depth);
+        angles.set(n.id, (a0 + a1) / 2);
+        spans.set(n.id, a1 - a0);
+        if (depth > maxDepth) maxDepth = depth;
+        if (n.collapsed || n.children.length === 0) return;
+        const total = leaves.get(n.id) || 1;
+        let cur = a0;
+        n.children.forEach((c) => {
+          const w = (a1 - a0) * (leaves.get(c.id) || 1) / total;
+          assign(c, depth + 1, cur, cur + w);
+          cur += w;
+        });
+      })(root, 0, start, start + sweep);
+
+      // 深さごとの最大パネル幅。パネルは常に水平なので、放射方向が水平に近い枝では
+      // 幅の分だけ輪を離さないと親子が重なる。
+      const maxW = [];
+      depths.forEach((depth, id) => {
+        const size = sizes[id] || { w: 160, h: 40 };
+        maxW[depth] = Math.max(maxW[depth] || 0, size.w);
+      });
+
+      // 半径は「深さ×radiusStep」が基本。これに2つの制約を重ねる。
+      //   角度方向：半径 × セクター幅 ≧ パネル幅 + gap（同じ輪の中で隣と重ならない）
+      //   半径方向：輪の間隔 ≧ 内外のパネル幅の半分ずつ + gap（親子が重ならない）
+      const radii = [0];
+      for (let d = 1; d <= maxDepth; d++) {
+        let need = d * step;
+        depths.forEach((depth, id) => {
+          if (depth !== d) return;
+          const span = spans.get(id) || 0;
+          if (span <= 0) return;
+          const size = sizes[id] || { w: 160, h: 40 };
+          need = Math.max(need, (size.w + gap) / span);
+        });
+        const ring = Math.max(step, (maxW[d - 1] || 0) / 2 + (maxW[d] || 0) / 2 + gap);
+        radii[d] = Math.max(need, radii[d - 1] + ring);
+      }
+
+      const positions = {};
+      depths.forEach((depth, id) => {
+        const r = radii[depth] || 0;
+        const a = angles.get(id) || 0;
+        positions[id] = { x: r * Math.cos(a), y: r * Math.sin(a) };
+      });
+      return { positions };
+    },
+  };
+
+  // 現在のレイアウトの座標計算エンジン。MOD（#97）はここを差し替える。
+  function activeLayoutEngine() { return LayoutEngines[activeLayout] || LayoutEngines.radial; }
+  function currentLayoutParams() { return settings.layoutParams || {}; }
+
+  function renderRadial(root, isRoot) {
+    const wrap = document.createElement("div");
+    wrap.className = "radial-wrap";
+    // SVGを先に置くことでDOM順が接続線→パネルとなり、線がパネルの下に隠れる
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", "radial-lines");
+    wrap.appendChild(svg);
+    (function walk(n, isR) {
+      const holder = document.createElement("div");
+      holder.className = "radial-node";
+      holder.dataset.id = n.id;
+      holder.appendChild(buildNodeBox(n, isR));
+      if (n.children.length > 0 && n.collapsed) holder.appendChild(buildCollapsedHint(n));
+      wrap.appendChild(holder);
+      if (!n.collapsed) n.children.forEach((c) => walk(c, false));
+    })(root, isRoot);
+    return wrap;
+  }
+
+  // CSS zoom 下の getBoundingClientRect は拡大後の値を返す。style で与えるのはズーム前の
+  // レイアウト座標なので、ここで割り戻して単位を揃える。
+  function measureRadialSizes(wrap) {
+    const zoom = settings.zoom || 1;
+    const sizes = {};
+    wrap.querySelectorAll(":scope > .radial-node").forEach((h) => {
+      const r = h.getBoundingClientRect();
+      sizes[h.dataset.id] = { w: r.width / zoom, h: r.height / zoom };
+    });
+    return sizes;
+  }
+
+  // 実測 → 座標計算 → 配置とSVG描画。render() の直後だけでなく、ズーム・リサイズ・
+  // インデント変更でも relayoutConnectors() 経由で呼ばれるため、何度呼んでも同じ結果になる。
+  function layoutConnectorsRadial() {
+    const wrap = document.querySelector("#canvas .radial-wrap");
+    if (!wrap) return;
+    const sizes  = measureRadialSizes(wrap);
+    const result = activeLayoutEngine()(tree, sizes, currentLayoutParams());
+    applyRadialPositions(wrap, sizes, result && result.positions);
+  }
+
+  // 座標（中心を原点とする）を実際のDOMへ当て、接続線を描く。座標の出どころは
+  // 標準エンジンでもMODでも同じ形式なので、この関数は両方から使える。
+  function applyRadialPositions(wrap, sizes, rawPositions) {
+    const positions = rawPositions || {};
+    const holders = Array.from(wrap.querySelectorAll(":scope > .radial-node"));
+
+    // 全体を正の座標へ寄せてスクロール範囲を確保する
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    holders.forEach((h) => {
+      const pos = positions[h.dataset.id], s = sizes[h.dataset.id];
+      if (!pos || !s) return;
+      minX = Math.min(minX, pos.x - s.w / 2); maxX = Math.max(maxX, pos.x + s.w / 2);
+      minY = Math.min(minY, pos.y - s.h / 2); maxY = Math.max(maxY, pos.y + s.h / 2);
+    });
+    if (!isFinite(minX)) return;
+
+    const pad    = 60;
+    const offX   = pad - minX, offY = pad - minY;
+    const width  = Math.ceil(maxX - minX + pad * 2);
+    const height = Math.ceil(maxY - minY + pad * 2);
+    wrap.style.width  = width + "px";
+    wrap.style.height = height + "px";
+
+    holders.forEach((h) => {
+      const pos = positions[h.dataset.id];
+      if (!pos) { h.style.visibility = "hidden"; return; }
+      h.style.visibility = "";
+      h.style.left = Math.round(pos.x + offX) + "px";
+      h.style.top  = Math.round(pos.y + offY) + "px";
+    });
+
+    const svg = wrap.querySelector(":scope > .radial-lines");
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    (function link(n) {
+      if (n.collapsed) return;
+      const from = positions[n.id];
+      n.children.forEach((c) => {
+        const to = positions[c.id];
+        if (from && to) {
+          const path = document.createElementNS(SVG_NS, "path");
+          path.setAttribute("d", `M ${from.x + offX} ${from.y + offY} L ${to.x + offX} ${to.y + offY}`);
+          path.setAttribute("stroke", "var(--line)");
+          path.setAttribute("stroke-width", "2");
+          path.setAttribute("fill", "none");
+          svg.appendChild(path);
+        }
+        link(c);
+      });
+    })(tree);
+  }
+
+  // ---- logee-mod（コード注入MOD） ----
+  // 配置ロジックをJSで書きたい上級者向けの拡張枠。標準の logee-config.json とは別ファイル・
+  // 別の入口として扱う（仕様書「コードカスタム（MOD）：標準とは別枠で許容」）。
+  //
+  // 安全側の設計：
+  //   * MODが担うのは座標計算だけ。DOM生成の権限は渡さない
+  //   * 実行は sandbox="allow-scripts" の iframe 内。allow-same-origin を付けないので
+  //     opaque origin となり、localStorage・Cookie・親DOMへは構造的に到達できない
+  //   * iframe内のCSPを default-src 'none' にして外部通信も塞ぐ。srcdoc はホストが組み立てる
+  //     ためMOD側からこのCSPは書き換えられない
+  //   * MODへ渡すツリーは構造だけ（id / collapsed / children）。本文は一切渡さない
+  //   * 無応答・例外・不正な戻り値はホスト側で検知し、破棄して標準レイアウトへ戻す
+  //   * localStorage には保存しない。リロードで解除される（無確認のコード実行を作らない）
+  const MOD_TIMEOUT_MS  = 1000;  // 座標計算の応答待ち（無限ループ対策）
+  const MOD_BOOT_MS     = 3000;  // サンドボックスの起動待ち
+  const MOD_COORD_LIMIT = 1e5;   // 極端な座標でブラウザを詰まらせないための上限
+
+  // MODに渡すツリー。配置計算に必要な構造だけを写し、本文（text）は含めない。
+  function treeSkeleton(node) {
+    return { id: node.id, collapsed: !!node.collapsed, children: node.children.map(treeSkeleton) };
+  }
+
+  function modSandboxHtml(code) {
+    // JSON文字列化したうえで "<" もエスケープする。これでMODコードがスクリプト終了タグを
+    // 含んでいても srcdoc のHTMLパースを壊さない。
+    // （このファイル自身も同じ理由でコメントに終了タグの文字列を書けない）
+    const literal = JSON.stringify(String(code)).replace(/</g, "\\u003c");
+    // 'unsafe-eval' はMODコードを new Function で組み立てるために必要（これがないと
+    // サンドボックス内でMODが一切動かない）。許すのはこのiframe内でのコード実行だけで、
+    // 外部通信は default-src 'none'、保存データと親DOMへの到達は opaque origin で塞いだまま。
+    return `<!DOCTYPE html><html><head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'">
+</head><body><script>
+"use strict";
+var engine = null, buildError = null;
+try { engine = new Function("tree", "sizes", "params", ${literal}); }
+catch (e) { buildError = String((e && e.message) || e); }
+window.addEventListener("message", function (ev) {
+  var req = ev.data || {};
+  if (req.kind !== "logee-mod-request") return;
+  var positions = null, error = buildError;
+  if (!error) {
+    try {
+      var out = engine(req.tree, req.sizes, req.params);
+      positions = out && out.positions;
+      if (!positions) error = "positions が返されませんでした";
+    } catch (e) { error = String((e && e.message) || e); }
+  }
+  parent.postMessage({ kind: "logee-mod-result", seq: req.seq, positions: positions, error: error }, "*");
+});
+parent.postMessage({ kind: "logee-mod-ready" }, "*");
+<\/script></body></html>`;
+  }
+
+  // 既知のノードすべてに有限で常識的な座標が揃っていることを確認する。
+  // 1つでも欠けたら結果全体を破棄する（部分的に壊れた配置を表示しない）。
+  function sanitizeModPositions(raw, sizes) {
+    if (!raw || typeof raw !== "object") return null;
+    const ids = Object.keys(sizes);
+    const out = {};
+    for (let i = 0; i < ids.length; i++) {
+      const p = raw[ids[i]];
+      if (!p || typeof p !== "object") return null;
+      const x = Number(p.x), y = Number(p.y);
+      if (!isFinite(x) || !isFinite(y)) return null;
+      if (Math.abs(x) > MOD_COORD_LIMIT || Math.abs(y) > MOD_COORD_LIMIT) return null;
+      out[ids[i]] = { x, y };
+    }
+    return out;
+  }
+
+  function teardownMod() {
+    if (!modState) return;
+    clearTimeout(modState.timer);
+    clearTimeout(modState.bootTimer);
+    if (modState.iframe && modState.iframe.parentNode) modState.iframe.remove();
+    window.removeEventListener("message", modState.onMessage);
+    modState = null;
+  }
+
+  function disableMod(reason) {
+    if (!modState) return;
+    teardownMod();
+    activeLayout = resolveLayout(settings.layout);
+    refreshModBadge();
+    render();
+    if (reason) alert("MODを解除しました。\n\n" + reason);
+  }
+
+  function refreshModBadge() {
+    const el = document.getElementById("modBadge");
+    if (!el) return;
+    el.innerHTML = "";
+    if (!modState) { el.classList.remove("on"); return; }
+    el.classList.add("on");
+    el.appendChild(document.createTextNode("MOD: " + (modState.mod.name || "無名")));
+    const btn = document.createElement("button");
+    btn.textContent = "解除";
+    btn.title = "MODを解除して標準レイアウトへ戻す";
+    btn.addEventListener("click", () => disableMod(null));
+    el.appendChild(btn);
+  }
+
+  function enableMod(mod) {
+    teardownMod();
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("sandbox", "allow-scripts"); // allow-same-origin は付けない
+    iframe.style.display = "none";
+
+    const state = { mod, iframe, seq: 0, key: null, positions: null, pending: null, timer: null, ready: false, queued: null };
+    state.onMessage = (ev) => {
+      if (!modState || modState !== state || ev.source !== iframe.contentWindow) return;
+      const d = ev.data || {};
+      if (d.kind === "logee-mod-ready") {
+        clearTimeout(state.bootTimer);
+        state.ready = true;
+        const f = state.queued; state.queued = null;
+        if (f) f();
+      } else if (d.kind === "logee-mod-result") {
+        handleModResult(d);
+      }
+    };
+    window.addEventListener("message", state.onMessage);
+    modState = state;
+
+    state.bootTimer = setTimeout(() => {
+      if (modState === state && !state.ready) disableMod("MODのサンドボックスが起動しませんでした。");
+    }, MOD_BOOT_MS);
+
+    iframe.srcdoc = modSandboxHtml(mod.layout.code);
+    document.body.appendChild(iframe);
+    activeLayout = MOD_LAYOUT; // settings には保存しない（リロードで標準へ戻す）
+    refreshModBadge();
+    render();
+  }
+
+  function handleModResult(d) {
+    const pending = modState.pending;
+    if (!pending || d.seq !== pending.seq) return; // 古い応答は捨てる
+    clearTimeout(modState.timer);
+    modState.timer = null;
+    modState.pending = null;
+    if (d.error) { disableMod("MODの実行中にエラーが発生しました：\n" + d.error); return; }
+    const clean = sanitizeModPositions(d.positions, pending.sizes);
+    if (!clean) { disableMod("MODが返した座標が不正でした。"); return; }
+    modState.key = pending.key;
+    modState.positions = clean;
+    relayoutConnectors(); // 受け取った座標で配置し直す
+  }
+
+  // MODの座標はiframe越しに非同期で返るため、同期の描画フローの中では待てない。
+  // 手元にある結果で描き、新しい結果が届いた時点で配置だけをやり直す方式にしている。
+  // 結果が来るまでは標準radialの座標を暫定表示に使う（白紙にしない）。
+  function layoutConnectorsMod() {
+    if (!modState) { layoutConnectorsRadial(); return; }
+    const wrap = document.querySelector("#canvas .radial-wrap");
+    if (!wrap) return;
+    const sizes = measureRadialSizes(wrap);
+    const key   = JSON.stringify([treeSkeleton(tree), sizes]);
+
+    if (modState.key === key && modState.positions) {
+      applyRadialPositions(wrap, sizes, modState.positions);
+      return;
+    }
+    applyRadialPositions(wrap, sizes, LayoutEngines.radial(tree, sizes, currentLayoutParams()).positions);
+
+    if (modState.pending && modState.pending.key === key) return; // 同じ内容の要求は重ねない
+    const seq = ++modState.seq;
+    modState.pending = { seq, key, sizes };
+    const send = () => {
+      if (!modState || !modState.pending || modState.pending.seq !== seq) return;
+      const win = modState.iframe.contentWindow;
+      if (!win) { disableMod("MODのサンドボックスを利用できません。"); return; }
+      clearTimeout(modState.timer);
+      modState.timer = setTimeout(() => {
+        if (modState && modState.pending && modState.pending.seq === seq) {
+          disableMod(MOD_TIMEOUT_MS + "ミリ秒以内に応答がありませんでした（無限ループの可能性）。");
+        }
+      }, MOD_TIMEOUT_MS);
+      win.postMessage({
+        kind: "logee-mod-request", seq,
+        tree: treeSkeleton(tree), sizes,
+        params: modState.mod.layout.params || {},
+      }, "*");
+    };
+    if (modState.ready) send(); else modState.queued = send;
+  }
+
+  // 読み込み前に必ず警告を出し、明示的な同意を取る。
+  function confirmAndEnableMod(mod) {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const lines = String(mod.layout.code).split("\n").length;
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>MODの読み込み確認</h2>
+        <div class="mod-warning">
+          <strong>このファイルにはコードが含まれています。</strong><br>
+          作成元を信頼できる場合のみ読み込んでください。コードはパネルの配置計算のみを担当し、
+          隔離された領域で実行されます（保存データ・外部通信には触れられません）。
+        </div>
+        <div class="mod-meta">
+          名前：${esc(mod.name) || "（なし）"}<br>
+          作者：${esc(mod.author) || "（不明）"}<br>
+          バージョン：${esc(mod.version) || "（なし）"}<br>
+          レイアウト名：<code>${esc(mod.layout.name) || "（なし）"}</code>　コード：${lines}行
+        </div>
+        <div class="hint-text">読み込んだMODはこのタブを閉じる／再読み込みすると解除されます。</div>
+        <div class="modal-actions">
+          <button id="modCancel">キャンセル</button>
+          <button id="modAccept" class="primary">読み込む</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector("#modCancel").addEventListener("click", close);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector("#modAccept").addEventListener("click", () => { close(); enableMod(mod); });
+  }
+
+  function importMod(jsonData) {
+    const layout = jsonData.layout;
+    if (!layout || typeof layout.code !== "string" || !layout.code.trim()) {
+      alert("MODファイルに layout.code（配置計算のコード）がありません");
+      return;
+    }
+    confirmAndEnableMod({
+      name: jsonData.name, author: jsonData.author, version: jsonData.version,
+      layout: { name: layout.name, params: layout.params || {}, code: layout.code },
+    });
+  }
+
+  // ---- DnD（自前ドラッグ実装） ----
+  // SortableJSのライブ並び替え（ドラッグ中に他パネルをリアルタイムで動かして挿入位置を
+  // プレビューする機能）を土台にした実装では、「動かしていないパネルは一切動かさない」
+  // というUX要件と根本的に相容れなかったため撤去した。ドラッグ中は本人のクローンだけが
+  // カーソルに追従し、他パネルのDOM位置は一切変更しない。判定はドロップの瞬間に
+  // 一度だけ行い、ドラッグ中は視覚フィードバック（ハイライト・挿入線）の表示のみ行う。
+  let dragState = null; // { nodeId, wrapper, descendantIds:Set, clone, offsetX, offsetY }
+
+  function collectDescendantIds(node, set) {
+    set = set || new Set();
+    node.children.forEach((c) => { set.add(c.id); collectDescendantIds(c, set); });
+    return set;
+  }
+
+  function clearDropFeedback() {
+    document.querySelectorAll(".node-box.drop-into").forEach((el) => el.classList.remove("drop-into"));
+    document.querySelectorAll(".drop-sibling-line").forEach((el) => el.remove());
+  }
+
+  // 座標(x,y)から「子として追加」または「兄弟として挿入」を一度だけ判定する。
+  // パネル本体の両端付近（隙間寄り）は兄弟挿入、中央付近は子として追加。判定に使う軸は
+  // アクティブレイアウトの siblingAxis に従う（tree系は上下端、pyramid は左右端）。
+  // ドラッグ中の逐次判定・逐次DOM変更は行わず、この関数はhover表示更新とドロップ確定の
+  // 両方から都度呼ばれるだけで、呼ばれるたびに独立して結果を返す（内部状態を持たない）。
+  // radial の角度判定に使う中心点（＝ルートパネルの中心）。ビューポート座標で返す。
+  function radialCenterPoint() {
+    const rootBox = document.querySelector("#canvas .node-box.root");
+    if (!rootBox) return null;
+    const r = rootBox.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  // ドロップ位置が対象パネルのどのあたりかを 0〜1 で返す。0寄り＝前に挿入、1寄り＝後ろに挿入、
+  // 中央（0.25〜0.75）＝子として追加。測る向きはレイアウトの siblingAxis に従う。
+  // vertical は挿入線を縦棒にするか、flip は「後ろ」が画面の左／上を向くかを表す。
+  function dropMetrics(axis, x, y, rect) {
+    if (axis === "x") return { ratio: (x - rect.left) / rect.width,  vertical: true,  flip: false };
+    if (axis === "y") return { ratio: (y - rect.top)  / rect.height, vertical: false, flip: false };
+    // radial：兄弟は同心円上に角度方向で並ぶため、円の接線方向で前後を測る
+    const c = radialCenterPoint();
+    if (!c) return { ratio: 0.5, vertical: false, flip: false };
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const theta = Math.atan2(cy - c.y, cx - c.x);
+    const tx = -Math.sin(theta), ty = Math.cos(theta); // 角度が増える向きの接線
+    const span = Math.abs(rect.width * tx) + Math.abs(rect.height * ty);
+    if (span <= 0) return { ratio: 0.5, vertical: false, flip: false };
+    const ratio = 0.5 + ((x - cx) * tx + (y - cy) * ty) / span;
+    const vertical = Math.abs(tx) >= Math.abs(ty); // 接線がほぼ水平なら前後は左右になる
+    return { ratio, vertical, flip: (vertical ? tx : ty) < 0 };
+  }
+
+  function resolveDrop(x, y) {
+    if (!dragState) return null;
+    const el = document.elementFromPoint(x, y);
+    const box = el ? el.closest(".node-box") : null;
+    const targetId = box ? box.dataset.nodeId : null;
+    if (!targetId) return null;
+    // 自分自身・自分の子孫の上には置けない（循環参照ガード）
+    if (targetId === dragState.nodeId || dragState.descendantIds.has(targetId)) return null;
+
+    const rect = box.getBoundingClientRect();
+    const axis = currentLayout().siblingAxis;
+    const m    = dropMetrics(axis, x, y, rect);
+    if (m.ratio > 0.25 && m.ratio < 0.75) {
+      return { mode: "into", targetId, box };
+    }
+
+    // 兄弟挿入：対象パネルの親はデータ側から引く（ルートには兄弟を作れないので null で弾かれる）
+    const parentNode = findParent(targetId);
+    if (!parentNode) return null;
+    if (parentNode.id === dragState.nodeId || dragState.descendantIds.has(parentNode.id)) return null;
+    return {
+      mode: "sibling", parentId: parentNode.id, siblingId: targetId,
+      after: m.ratio >= 0.75, vertical: m.vertical, flip: m.flip,
+      // 挿入線の枠。tree系はサブツリー全体に出して従来の見た目を保ち、radial はパネル自身に出す
+      host: box.closest(".child-wrapper") || box,
+    };
+  }
+
+  function showDropFeedback(hit) {
+    clearDropFeedback();
+    if (!hit) return;
+    if (hit.mode === "into") {
+      hit.box.classList.add("drop-into");
+    } else {
+      const line = document.createElement("div");
+      line.className = "drop-sibling-line" + (hit.vertical ? " vertical" : "");
+      const atEnd = hit.flip ? !hit.after : hit.after;
+      if (hit.vertical) { line.style.left = atEnd ? "100%" : "0"; }
+      else              { line.style.top  = atEnd ? "100%" : "0"; }
+      hit.host.style.position = hit.host.style.position || "relative";
+      hit.host.appendChild(line);
+    }
+  }
+
+  function onDragPointerMove(e) {
+    if (!dragState) return;
+    const point = e.touches ? e.touches[0] : e;
+    if (!point) return;
+    e.preventDefault();
+    dragState.lastX = point.clientX;
+    dragState.lastY = point.clientY;
+    dragState.clone.style.left = (point.clientX - dragState.offsetX) + "px";
+    dragState.clone.style.top  = (point.clientY - dragState.offsetY) + "px";
+    showDropFeedback(resolveDrop(point.clientX, point.clientY));
+  }
+
+  function onDragPointerUp(e) {
+    if (!dragState) return;
+    const point = (e.changedTouches && e.changedTouches[0]) || e;
+    const hit = point.clientX != null ? resolveDrop(point.clientX, point.clientY) : null;
+    applyDrop(dragState.nodeId, hit);
+    teardownDragState();
+  }
+
+  function teardownDragState() {
+    if (!dragState) return;
+    dragState.clone.remove();
+    document.querySelectorAll(".node-box.drag-source").forEach((el) => el.classList.remove("drag-source"));
+    clearDropFeedback();
+    document.removeEventListener("mousemove", onDragPointerMove);
+    document.removeEventListener("touchmove", onDragPointerMove);
+    document.removeEventListener("mouseup", onDragPointerUp);
+    document.removeEventListener("touchend", onDragPointerUp);
+    document.removeEventListener("touchcancel", onDragPointerUp);
+    dragState = null;
+  }
+
+  function applyDrop(nodeId, hit) {
+    if (!hit) return; // 何もない場所に落とした場合は元の位置のまま何もしない
+    const fromParent = findParent(nodeId);
+    if (!fromParent) return;
+    const idx = fromParent.children.findIndex(c => c.id === nodeId);
+    if (idx === -1) return;
+
+    if (hit.mode === "into") {
+      const target = findNode(hit.targetId);
+      if (!target) return;
+      pushUndo();
+      const [node] = fromParent.children.splice(idx, 1);
+      target.children.push(node);
+      target.collapsed = false;
+    } else {
+      const parent = findNode(hit.parentId);
+      if (!parent) return;
+      pushUndo();
+      const [node] = fromParent.children.splice(idx, 1);
+      // spliceで自分自身を抜いた後にインデックスがずれる可能性があるため、抜いた後に基準ノードを探し直す
+      let insertIdx = parent.children.findIndex(c => c.id === hit.siblingId);
+      if (insertIdx === -1) { parent.children.push(node); }
+      else { parent.children.splice(insertIdx + (hit.after ? 1 : 0), 0, node); }
+    }
+
+    save(); render();
+  }
+
+  function startDrag(nodeId, wrapper, box, point) {
+    commitCurrentEdit();
+    // commitCurrentEdit()はQuillインスタンスを破棄するだけでDOM（編集欄・操作ボタン）自体は
+    // render()まで残るため、クローンからは除去してドラッグ中の見た目をシンプルにする。
+    const rect = box.getBoundingClientRect();
+    const clone = box.cloneNode(true);
+    clone.className = "node-box drag-clone";
+    clone.querySelectorAll(".node-actions, .node-divider, .btn-toggle").forEach((el) => el.remove());
+    const clonedEditor = clone.querySelector(".quill-editor");
+    if (clonedEditor) {
+      const label = document.createElement("span");
+      label.className = "node-text";
+      const plain = htmlToPlainText(findNode(nodeId) ? findNode(nodeId).text : "");
+      label.textContent = plain.trim() || "クリックして入力";
+      clonedEditor.replaceWith(label);
+    }
+    clone.style.width  = rect.width + "px";
+    clone.style.left   = rect.left + "px";
+    clone.style.top    = rect.top + "px";
+    document.body.appendChild(clone);
+    box.classList.add("drag-source");
+
+    dragState = {
+      nodeId,
+      wrapper,
+      descendantIds: collectDescendantIds(findNode(nodeId) || { children: [] }),
+      clone,
+      offsetX: point.clientX - rect.left,
+      offsetY: point.clientY - rect.top,
+      lastX: point.clientX,
+      lastY: point.clientY,
+    };
+    document.addEventListener("mousemove", onDragPointerMove);
+    document.addEventListener("touchmove", onDragPointerMove, { passive: false });
+    document.addEventListener("mouseup", onDragPointerUp);
+    document.addEventListener("touchend", onDragPointerUp);
+    document.addEventListener("touchcancel", onDragPointerUp);
+  }
+
+  // ドラッグ開始の判定にわずかな移動量の閾値を設ける。閾値なしでmousedown即ドラッグ扱いにすると、
+  // クリックしただけの操作（選択・編集開始）まで毎回ドラッグ開始してしまう。
+  const DRAG_START_THRESHOLD = 4;
+
+  function bindDragHandle(handle, isRoot) {
+    if (isRoot) return; // ルートはドラッグ元にしない（既存のsibling系ボタンと同じ方針）
+    const box = handle.closest(".node-box");
+    const nodeId = box ? box.dataset.nodeId : null;
+    if (!box || !nodeId) return;
+    // ドラッグ中に半透明化する範囲。tree系はサブツリーごと、radial はパネル単体
+    const wrapper = box.closest(".child-wrapper") || box;
+
+    const onPointerDown = (downEvt) => {
+      if (downEvt.button != null && downEvt.button !== 0) return;
+      const startPoint = downEvt.touches ? downEvt.touches[0] : downEvt;
+      const startX = startPoint.clientX, startY = startPoint.clientY;
+      let started = false;
+
+      const onMove = (moveEvt) => {
+        const p = moveEvt.touches ? moveEvt.touches[0] : moveEvt;
+        if (!p) return;
+        if (!started) {
+          if (Math.hypot(p.clientX - startX, p.clientY - startY) < DRAG_START_THRESHOLD) return;
+          started = true;
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("touchmove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          document.removeEventListener("touchend", onUp);
+          startDrag(nodeId, wrapper, box, p);
+        }
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("touchmove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.removeEventListener("touchend", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("touchmove", onMove, { passive: true });
+      document.addEventListener("mouseup", onUp);
+      document.addEventListener("touchend", onUp);
+    };
+
+    handle.addEventListener("mousedown", onPointerDown);
+    handle.addEventListener("touchstart", onPointerDown, { passive: true });
+  }
+
+  function initDnD() {
+    document.querySelectorAll(".drag-handle").forEach((handle) => {
+      const box = handle.closest(".node-box");
+      bindDragHandle(handle, box && box.classList.contains("root"));
+    });
+  }
+
+  // ---- Markdown export ----
+  // 見出し化しない（地の文になる）ノード：自身＋子孫のテキストを改行区切りでフラットに連結
+  function buildMarkdownBody(node) {
+    const text = htmlToMarkdown(node.text) || "(無題)";
+    let s = text;
+    node.children.forEach(c => { s += "\n" + buildMarkdownBody(c); });
+    return s;
+  }
+  // limit: 0=制限なし（全階層を#化）／1〜5=その階層までを見出し化し、超える深さは地の文にする
+  function buildMarkdown(node, depth, limit) {
+    const text  = htmlToMarkdown(node.text) || "(無題)";
+    const level = Math.min(depth + 1, 6);
+    let md = "#".repeat(level) + " " + text.split("\n")[0] + "\n\n";
+    const rest = text.split("\n").slice(1).join("\n").trim();
+    if (rest) md += rest + "\n\n";
+    node.children.forEach(c => {
+      const childLevel = Math.min(depth + 2, 6);
+      if (limit === 0 || childLevel <= limit) { md += buildMarkdown(c, depth + 1, limit); }
+      else { md += buildMarkdownBody(c) + "\n\n"; }
+    });
+    return md;
+  }
+  const MD_HEADING_OPTIONS = [
+    { value: 0, label: "シャープすべて" },
+    { value: 1, label: "#まで" },
+    { value: 2, label: "##まで" },
+    { value: 3, label: "###まで" },
+    { value: 4, label: "####まで" },
+    { value: 5, label: "#####まで" },
+  ];
+  function doExportMd() {
+    commitCurrentEdit();
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const optionsHtml = MD_HEADING_OPTIONS.map(o =>
+      `<label style="display:flex;align-items:center;gap:4px;">
+         <input type="radio" name="mdHeadingLimit" value="${o.value}" ${settings.mdHeadingLimit === o.value ? "checked" : ""}>
+         ${o.label}
+       </label>`).join("");
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>Markdown出力</h2>
+        <div class="settings-section">
+          <div class="settings-label">見出し階層</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">${optionsHtml}</div>
+        </div>
+        <textarea readonly></textarea>
+        <div class="modal-actions">
+          <button id="mdCopy">コピー</button>
+          <button id="mdDownload">ダウンロード(.md)</button>
+          <button id="mdClose">閉じる</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const textarea = overlay.querySelector("textarea");
+    function refresh() {
+      textarea.value = buildMarkdown(tree, 0, settings.mdHeadingLimit).trimEnd() + "\n";
+    }
+    refresh();
+    overlay.querySelectorAll('input[name="mdHeadingLimit"]').forEach(input => {
+      input.addEventListener("change", () => {
+        settings.mdHeadingLimit = parseInt(input.value, 10);
+        saveSettings();
+        refresh();
+      });
+    });
+    overlay.querySelector("#mdCopy").addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(textarea.value); overlay.querySelector("#mdCopy").textContent = "コピーしました"; }
+      catch (e) { textarea.select(); document.execCommand("copy"); }
+    });
+    overlay.querySelector("#mdDownload").addEventListener("click", () => {
+      const blob = new Blob([textarea.value], { type: "text/markdown" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = "logic-tree-" + new Date().toISOString().slice(0, 10) + ".md";
+      a.click(); URL.revokeObjectURL(url);
+    });
+    const close = () => overlay.remove();
+    overlay.querySelector("#mdClose").addEventListener("click", close);
+    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+  }
+
+  // ---- Markdown import ----
+  function parseMdToTree(md) {
+    nextId = 1;
+    const root  = newNode("");
+    const stack = [{ node: root, depth: 0 }];
+    let last = root;
+    for (const raw of md.split("\n")) {
+      const line = raw.trimEnd();
+      const m    = line.match(/^(#{1,6})\s+(.*)/);
+      if (m) {
+        const depth = m[1].length;
+        const text  = m[2].trim();
+        const n     = newNode(text);
+        while (stack.length > 1 && stack[stack.length - 1].depth >= depth) stack.pop();
+        stack[stack.length - 1].node.children.push(n);
+        stack.push({ node: n, depth });
+        last = n;
+      } else if (line.trim()) {
+        last.text = last.text ? last.text + "\n" + line.trim() : line.trim();
+      }
+    }
+    // "#" が単一の最上位見出しの場合、空のダミールートではなくその見出し自体をルートにする
+    if (root.text === "" && root.children.length === 1) return root.children[0];
+    return root;
+  }
+  document.getElementById("btnImportMd").addEventListener("click", () => {
+    document.getElementById("mdFileInput").click();
+  });
+  document.getElementById("mdFileInput").addEventListener("change", (e) => {
+    const file = e.target.files[0]; if (!file) return; e.target.value = "";
+    if (!file.name.toLowerCase().endsWith(".md")) { alert(".md ファイルのみ読み込めます"); return; }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      pushUndo();
+      tree = parseMdToTree(ev.target.result);
+      selectedId = null; editingId = null; activeQuill = null;
+      save(); render();
+    };
+    reader.readAsText(file, "UTF-8");
+  });
+  async function importFromClipboard() {
+    let text;
+    try { text = await navigator.clipboard.readText(); }
+    catch (e) { alert("クリップボードを読み取れませんでした。ブラウザの権限を確認してください。"); return; }
+    if (!text || !text.trim()) { alert("クリップボードにテキストがありません"); return; }
+    pushUndo();
+    tree = parseMdToTree(text);
+    selectedId = null; editingId = null; activeQuill = null;
+    save(); render();
+  }
+  document.getElementById("btnImportClipboard").addEventListener("click", importFromClipboard);
+
+  // ---- Toolbar ----
+  function setCollapsedAll(node, v) {
+    if (node.children.length > 0) node.collapsed = v;
+    node.children.forEach(c => setCollapsedAll(c, v));
+  }
+  document.getElementById("btnExpandAll").addEventListener("click",   () => { setCollapsedAll(tree, false); save(); render(); });
+  document.getElementById("btnCollapseAll").addEventListener("click", () => { setCollapsedAll(tree, true);  save(); render(); });
+  document.getElementById("btnReset").addEventListener("click", () => {
+    if (!confirm("このツリーの内容をすべて消去しますか？")) return;
+    pushUndo();
+    tree = defaultTree(); selectedId = null; editingId = null; activeQuill = null;
+    save(); render();
+  });
+  document.getElementById("btnUndo").addEventListener("click", undo);
+  document.getElementById("btnExportMd").addEventListener("click", doExportMd);
+  document.getElementById("btnSettings").addEventListener("click", openSettingsModal);
+  document.getElementById("btnNewTree").addEventListener("click", addTree);
+  document.getElementById("btnToggleList").addEventListener("click", () => {
+    settings.sidebar = !settings.sidebar;
+    saveSettings();
+    applySidebar();
+    relayoutConnectors(); // 表示幅が変わるので接続線を引き直す
+  });
+
+  // ---- Settings modal ----
+  function openSettingsModal() {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const rows = Object.entries(ACTION_LABELS).map(([key, label]) =>
+      `<tr><td class="sc-label">${label}</td><td>
+        <input class="sc-input" data-action="${key}" readonly value="${settings.shortcuts[key] || ""}">
+       </td></tr>`).join("");
+
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>設定</h2>
+        <div class="settings-section">
+          <div class="settings-label">インデント幅</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" id="stgIndent" min="10" max="120" step="4" value="${settings.indent}" class="num-input">
+            <span class="hint-text">px</span>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-label">設定ファイル</div>
+          <div class="hint-text" style="margin-bottom:6px;">
+            テーマ単体（.logee-theme.json）と統合設定（.logee-config.json）のどちらも読込できます。
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="stgConfigImport">読込</button>
+            <button id="stgThemeExport">テーマのみ書出</button>
+            <button id="stgConfigExport">統合設定を書出</button>
+            <button id="stgThemeReset">テーマをデフォルトに戻す</button>
+          </div>
+          <input type="file" id="configFileInput" accept=".json" style="display:none">
+        </div>
+        <div class="settings-section">
+          <div class="settings-label">MOD（コード入り・上級者向け）</div>
+          <div class="hint-text" style="margin-bottom:6px;">
+            パネルの配置計算をJavaScriptで差し替える <code>.logee-mod.json</code> を読み込みます。
+            標準の設定ファイルとは別の読込口です。読み込んだMODは再読み込みで解除されます。
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="stgModImport">MODを読込</button>
+            <button id="stgModDisable">MODを解除</button>
+          </div>
+          <input type="file" id="modFileInput" accept=".json" style="display:none">
+        </div>
+        <div class="settings-section">
+          <div class="settings-label">ショートカットキー</div>
+          <div class="hint-text" style="margin-bottom:6px;">入力欄をクリック後、新しいキーを押して設定。Esc でキャンセル。</div>
+          <table class="sc-table">${rows}</table>
+        </div>
+        <div class="modal-actions"><button id="stgClose" class="primary">閉じる</button></div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector("#stgIndent").addEventListener("input", function () {
+      const v = Math.max(10, Math.min(120, parseInt(this.value, 10) || 28));
+      settings.indent = v; saveSettings();
+      document.documentElement.style.setProperty("--indent", v + "px");
+      relayoutConnectors();
+    });
+
+    const configFile = overlay.querySelector("#configFileInput");
+    overlay.querySelector("#stgConfigImport").addEventListener("click", () => configFile.click());
+    configFile.addEventListener("change", (e) => {
+      const file = e.target.files[0]; if (!file) return; e.target.value = "";
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try { importConfig(JSON.parse(ev.target.result)); }
+        catch (_) { alert("JSON の読み込みに失敗しました"); }
+      };
+      reader.readAsText(file, "UTF-8");
+    });
+
+    // MODは標準設定とは別の読込口にする（境界を明確にするため入口を分ける）
+    const modFile = overlay.querySelector("#modFileInput");
+    overlay.querySelector("#stgModImport").addEventListener("click", () => modFile.click());
+    modFile.addEventListener("change", (e) => {
+      const file = e.target.files[0]; if (!file) return; e.target.value = "";
+      const reader = new FileReader();
+      reader.onload = ev => {
+        let data;
+        try { data = JSON.parse(ev.target.result); }
+        catch (_) { alert("JSON の読み込みに失敗しました"); return; }
+        if (!data || data.type !== "logee-mod") {
+          alert('この読込口は MOD 専用です（type: "logee-mod"）。\n通常の設定ファイルは「設定ファイル」の読込を使ってください。');
+          return;
+        }
+        close();
+        importMod(data);
+      };
+      reader.readAsText(file, "UTF-8");
+    });
+    overlay.querySelector("#stgModDisable").addEventListener("click", () => {
+      if (!modState) { alert("MODは読み込まれていません"); return; }
+      close();
+      disableMod(null);
+    });
+
+    overlay.querySelector("#stgThemeExport").addEventListener("click", () => {
+      const data = { type: "theme", name: "Custom Theme", version: "1.0.0", colors: collectCurrentThemeColors() };
+      downloadJson(data, "logee-theme.json");
+    });
+
+    overlay.querySelector("#stgConfigExport").addEventListener("click", () => {
+      const data = {
+        type: "logee-config",
+        name: "Custom Config",
+        version: "1.0.0",
+        theme:    { colors: collectCurrentThemeColors() },
+        keybinds: Object.assign({}, settings.shortcuts),
+        template: { layout: activeLayout, connector: activeConnector, params: settings.layoutParams || {} },
+      };
+      downloadJson(data, "logee-config.json");
+    });
+
+    overlay.querySelector("#stgThemeReset").addEventListener("click", () => {
+      localStorage.removeItem(THEME_KEY);
+      CSS_VARS.forEach(v => document.documentElement.style.removeProperty("--" + v));
+    });
+
+    let capturing = null;
+    overlay.querySelectorAll(".sc-input").forEach(input => {
+      input.addEventListener("click", () => {
+        if (capturing) capturing.style.outline = "";
+        capturing = input;
+        input.style.outline = "2px solid var(--accent)";
+        input.value = "キーを押してください…";
+      });
+      input.addEventListener("keydown", (e) => {
+        if (capturing !== input) return;
+        e.preventDefault(); e.stopPropagation();
+        if (e.key === "Escape") {
+          input.value = settings.shortcuts[input.dataset.action] || "";
+          input.style.outline = ""; capturing = null; return;
+        }
+        const sc = normalizeKey(e);
+        if (!sc) return;
+        settings.shortcuts[input.dataset.action] = sc;
+        saveSettings();
+        input.value = sc;
+        input.style.outline = ""; capturing = null;
+      });
+    });
+
+    const close = () => overlay.remove();
+    overlay.querySelector("#stgClose").addEventListener("click", close);
+    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+  }
+
+  // ---- Canvas pan（空白部分をドラッグしてキャンバス全体を移動） ----
+  // ノードのDnD（bindDragHandle）と同じ「移動量が閾値を超えるまではドラッグ開始としない」方式。
+  // 閾値未満のままmouseupした場合はクリック（＝下の deselect ハンドラ）として扱う。
+  let justPanned = false;
+  document.getElementById("canvas").addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest(".node-box") || e.target.closest("button")) return;
+    const canvas = document.getElementById("canvas");
+    const startX = e.clientX, startY = e.clientY;
+    const startScrollLeft = canvas.scrollLeft, startScrollTop = canvas.scrollTop;
+    let started = false;
+
+    const onMove = (moveEvt) => {
+      // ウィンドウ外でボタンを離すとmouseupを取りこぼすことがあるため、
+      // 移動のたびに左ボタンが実際に押されているかを確認し、離れていれば即座に終了する。
+      if ((moveEvt.buttons & 1) === 0) { onUp(); return; }
+      const dx = moveEvt.clientX - startX;
+      const dy = moveEvt.clientY - startY;
+      if (!started) {
+        if (Math.hypot(dx, dy) < DRAG_START_THRESHOLD) return;
+        started = true;
+        canvas.classList.add("panning");
+      }
+      moveEvt.preventDefault();
+      canvas.scrollLeft = startScrollLeft - dx;
+      canvas.scrollTop  = startScrollTop - dy;
+    };
+    const onUp = () => {
+      canvas.classList.remove("panning");
+      if (started) justPanned = true; // 直後に発火するclickでの選択解除を抑止する
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    window.addEventListener("blur", onUp); // Alt+Tab等でウィンドウがフォーカスを失った場合の保険
+  });
+
+  // ---- Canvas deselect ----
+  document.getElementById("canvas").addEventListener("click", (e) => {
+    if (justPanned) { justPanned = false; return; } // ドラッグでパンした直後のclickは選択解除しない
+    // .node-box の外側（接続線・余白など）をクリックしたら選択解除する
+    if (!e.target.closest(".node-box")) { commitCurrentEdit(); selectedId = null; editingId = null; render(); }
+  });
+  window.addEventListener("resize", relayoutConnectors);
+
+  // ---- Init ----
+  document.documentElement.style.setProperty("--indent", settings.indent + "px");
+  applyZoom();
+  applySidebar();
+  refreshModBadge();
+  renderTreeList();
+  writeStore(); // v1→v2 移行直後でも、この時点で v2 を確定させておく
+  render();
+
+})();
+</script>
+</body>
+</html>

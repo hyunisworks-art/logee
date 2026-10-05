@@ -1,0 +1,18 @@
+{
+  "type": "theme",
+  "name": "VS Light",
+  "version": "1.0.0",
+  "colors": {
+    "bg": "#ffffff",
+    "panel": "#ffffff",
+    "text": "#1e1e1e",
+    "text-sub": "#6e7681",
+    "line": "#9aa4b2",
+    "accent": "#007acc",
+    "accent-soft": "#e7f3fc",
+    "selected-border": "#7c3aed",
+    "editing-border": "#d97706",
+    "danger": "#cd3131",
+    "border": "#dcdcdc"
+  }
+}

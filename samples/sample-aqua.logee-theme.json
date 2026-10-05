@@ -1,0 +1,18 @@
+{
+  "type": "theme",
+  "name": "Aqua",
+  "version": "1.0.0",
+  "colors": {
+    "bg": "#f2f8fd",
+    "panel": "#ffffff",
+    "text": "#12354f",
+    "text-sub": "#5b7f9c",
+    "line": "#9cc6e4",
+    "accent": "#2b8fd6",
+    "accent-soft": "#dceefb",
+    "selected-border": "#7c5cf5",
+    "editing-border": "#e08a00",
+    "danger": "#d9534f",
+    "border": "#c7ddec"
+  }
+}

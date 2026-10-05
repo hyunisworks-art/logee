@@ -1,0 +1,15 @@
+{
+  "type": "logee-config",
+  "name": "Layout: Radial (放射状)",
+  "version": "1.0.0",
+  "template": {
+    "layout": "radial",
+    "connector": "straight",
+    "params": {
+      "radiusStep": 180,
+      "startAngle": -90,
+      "sweep": 360,
+      "gap": 24
+    }
+  }
+}

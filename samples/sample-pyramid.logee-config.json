@@ -1,0 +1,10 @@
+{
+  "type": "logee-config",
+  "name": "Layout: Pyramid (上→下)",
+  "version": "1.0.0",
+  "template": {
+    "layout": "pyramid",
+    "connector": "straight",
+    "params": {}
+  }
+}

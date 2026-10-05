@@ -1,0 +1,7 @@
+.vercel
+.env*
+node_modules
+test-results
+playwright-report
+package-lock.json
+.coverage

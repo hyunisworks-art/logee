@@ -1,0 +1,10 @@
+{
+  "type": "logee-config",
+  "name": "Layout: Tree (左→右)",
+  "version": "1.0.0",
+  "template": {
+    "layout": "tree",
+    "connector": "straight",
+    "params": {}
+  }
+}

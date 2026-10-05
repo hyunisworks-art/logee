@@ -1,0 +1,18 @@
+{
+  "type": "theme",
+  "name": "Forest",
+  "version": "1.0.0",
+  "colors": {
+    "bg": "#0f1c11",
+    "panel": "#16281a",
+    "text": "#e6f0e2",
+    "text-sub": "#8fac86",
+    "line": "#4f7a48",
+    "accent": "#5fbf56",
+    "accent-soft": "#25402a",
+    "selected-border": "#a78bfa",
+    "editing-border": "#fbbf24",
+    "danger": "#e5645a",
+    "border": "#2e4530"
+  }
+}
