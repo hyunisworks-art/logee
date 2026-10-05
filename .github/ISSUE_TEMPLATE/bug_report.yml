@@ -1,0 +1,52 @@
+name: 不具合報告
+description: Logee の動作がおかしいときはこちら（機能の要望は受け付けていません）
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        不具合報告専用です。機能の要望は [note の記事](https://note.com/hyu_nisworks/n/nfc96807ed86e)（100円）の購入者向けに受け付けています。
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きましたか
+      description: 期待した動きと、実際の動きを書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      placeholder: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: ブラウザとバージョン
+      placeholder: Chrome 130、Firefox 131 など
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: Windows 11、macOS 15 など
+  - type: dropdown
+    id: where
+    attributes:
+      label: 使っていた場所
+      options:
+        - 本番サイト（logee-logic-tree.vercel.app）
+        - ローカルで index.html を開いた
+        - Fork・改変したもの
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 補足
+      description: 読み込んだ設定ファイルや MOD、画面のスクリーンショットがあれば書いてください。ツリーの内容に個人情報が含まれていないか確認してください。
