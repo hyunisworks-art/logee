@@ -133,6 +133,72 @@ Vercel 等にデプロイする場合は、ルートの `index.html` と `logo.p
 
 配置座標をユーザー提供 JavaScript で差し替える拡張です。**信頼できる作者の MOD だけ**読み込んでください。実行は sandbox iframe 内に限定していますが、ブラウザ実装に依存します。詳細は `docs/security-mod.md` を参照。
 
+読み込みは、設定画面の「MODを読込」から行います。「MODを解除」で標準レイアウトに戻ります。MOD は保存されないため、ページを再読み込みしても標準レイアウトに戻ります。
+
+### 書き方
+
+```json
+{
+  "type": "logee-mod",
+  "name": "Spiral Layout",
+  "version": "1.0.0",
+  "author": "your name",
+  "layout": {
+    "name": "spiral",
+    "params": { "angleStep": 0.6, "radiusStep": 42 },
+    "code": "...JavaScript を文字列で..."
+  }
+}
+```
+
+| キー | 必須 | 内容 |
+| --- | --- | --- |
+| `type` | はい | `logee-mod` 固定 |
+| `name` / `version` / `author` | いいえ | 読込時の確認画面に表示される |
+| `layout.code` | はい | 配置を計算する JavaScript（文字列。空は不可） |
+| `layout.params` | いいえ | `code` に渡す調整値。省略すると `{}` |
+| `layout.name` | いいえ | 配置の名前 |
+
+### `code` の中で使えるもの
+
+`code` は関数の本体として実行されます。次の 3 つの変数が使えます。
+
+| 変数 | 内容 |
+| --- | --- |
+| `tree` | ツリーの構造。`{ id, collapsed, children }` だけで、ノードの本文は渡されません |
+| `sizes` | 表示中の各ノードの大きさ。`{ [id]: { w, h } }`（ピクセル） |
+| `params` | ファイルの `layout.params` |
+
+最後に `return { positions: { [id]: { x, y } } }` で、各ノードの座標を返します。
+
+- 座標は **ツリーの中心を原点（0, 0）** としたピクセル値です。
+- **`sizes` にあるすべてのノード**の座標が必要です。折りたたまれた枝の子は `sizes` に含まれないので、返す必要はありません（`collapsed` が `true` のノードの子は、計算から外します）。
+- 座標は有限の数値で、絶対値は 100,000 以下にしてください。1 つでも欠けたり不正だったりすると、結果全体が捨てられ、標準の放射状レイアウトで暫定表示されます。
+
+### 制限
+
+- 計算結果は 1 秒以内に返してください。超えると MOD は解除されます（起動は 3 秒まで）。
+- 外部への通信、`localStorage`、画面（DOM）の操作はできません。
+- ツリーの本文は読めません。
+
+最小の例（ノードを縦一列に並べる）:
+
+```js
+var all = [];
+(function walk(n) {
+  all.push(n);
+  if (!n.collapsed) n.children.forEach(walk);
+})(tree);
+
+var positions = {};
+all.forEach(function (n, i) {
+  positions[n.id] = { x: 0, y: i * (params.gap || 60) };
+});
+return { positions: positions };
+```
+
+実際に動く例は `samples/mods/sample-spiral.logee-mod.json`（渦巻き状）です。
+
 ## カスタマイズの進め方
 
 1. **Fork / Clone** して `index.html` を編集（単一ファイル完結）
