@@ -154,11 +154,14 @@ cd tests && npm install && npx playwright test
 
 - [Quill](https://github.com/slab/quill) 1.3.7（BSD-3-Clause）— jsDelivr CDN 経由で読み込み。初回の編集利用時にネットワーク接続が必要です。
 
-## 更新連絡・要望について
+## 不具合報告・更新連絡・要望について
 
-Logee は無料で全機能を使えます。バージョンアップの連絡と機能の要望は、[note の記事](https://note.com/hyu_nisworks/n/nfc96807ed86e)（100 円）の購入者向けに提供しています。このリポジトリでは Issue を受け付けていません。
+Logee は無料で全機能を使えます。
 
-Logee はオープンソース（MIT License）として公開しており、Fork して自由に改変・再配布できます。開発と更新は作者が行う方針のため、Pull Request も原則として受け付けません。
+- **不具合報告:** [GitHub の Issue](https://github.com/hyunisworks-art/logee/issues) で受け付けます。再現手順、ブラウザの種類とバージョンを添えてください。
+- **更新連絡・機能の要望:** [note の記事](https://note.com/hyu_nisworks/n/nfc96807ed86e)（100 円）の購入者向けに提供しています。要望の Issue は受け付けません。
+
+Logee はオープンソース（MIT License）として公開しており、Fork して自由に改変・再配布できます。開発と更新は作者が行う方針のため、Pull Request は原則として受け付けません。
 
 ## ライセンス
 
