@@ -101,12 +101,13 @@ test.describe("テーマ（logee-theme）", () => {
     await expect.poll(() => cssVar(page, "--accent")).toBe("#2b8fd6");
   });
 
-  test("「テーマをデフォルトに戻す」で上書きが消える", async ({ page }) => {
+  test("「設定をデフォルトに戻す」でテーマの上書きが消える", async ({ page }) => {
     await openApp(page);
     await importConfigFile(page, "sample-aqua.logee-theme.json");
     await expect.poll(() => cssVar(page, "--accent")).toBe("#2b8fd6");
 
-    await page.click("#stgThemeReset");
+    page.once("dialog", (d) => d.accept());
+    await page.click("#stgSettingsReset");
     await expect.poll(() => cssVar(page, "--accent")).toBe("");
     const saved = await page.evaluate(() => localStorage.getItem("logicTree.theme"));
     expect(saved).toBeNull();

@@ -2186,7 +2186,7 @@ parent.postMessage({ kind: "logee-mod-ready" }, "*");
             <button id="stgConfigImport">読込</button>
             <button id="stgThemeExport">テーマのみ書出</button>
             <button id="stgConfigExport">統合設定を書出</button>
-            <button id="stgThemeReset">テーマをデフォルトに戻す</button>
+            <button id="stgSettingsReset">設定をデフォルトに戻す</button>
           </div>
           <input type="file" id="configFileInput" accept=".json" style="display:none">
         </div>
@@ -2273,9 +2273,25 @@ parent.postMessage({ kind: "logee-mod-ready" }, "*");
       downloadJson(data, "logee-config.json");
     });
 
-    overlay.querySelector("#stgThemeReset").addEventListener("click", () => {
+    overlay.querySelector("#stgSettingsReset").addEventListener("click", () => {
+      if (!confirm("テーマ・レイアウト・インデント幅・ショートカットを初期状態に戻します。\nツリーの内容は消えません。よろしいですか？")) return;
       localStorage.removeItem(THEME_KEY);
       CSS_VARS.forEach(v => document.documentElement.style.removeProperty("--" + v));
+      settings.indent = 28;
+      settings.layout = "tree";
+      settings.connector = "straight";
+      settings.layoutParams = {};
+      settings.mdHeadingLimit = 0;
+      settings.shortcuts = Object.assign({}, DEFAULT_SHORTCUTS);
+      saveSettings();
+      document.documentElement.style.setProperty("--indent", settings.indent + "px");
+      teardownMod();
+      activeLayout = resolveLayout(settings.layout);
+      activeConnector = resolveConnector(settings.connector);
+      refreshModBadge();
+      close();
+      render();
+      openSettingsModal(); // 入力欄の表示を初期値に更新するため開き直す
     });
 
     let capturing = null;
